@@ -1,10 +1,19 @@
+using Google.Api.Gax;
 using Google.Cloud.Firestore;
 using LawncareApi.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ── Controllers & OpenAPI ────────────────────────────────────────────────────
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(o =>
+    {
+        o.JsonSerializerOptions.Converters.Add(new UtcDateTimeConverter());
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -12,8 +21,8 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "Lawncare API",
         Version = "v1",
-        Description = "REST API for weather data ingestion (Ecowitt GW1100/WH51/WN32) " +
-                      "and lawn care task management."
+        Description = "REST API for weather data ingestion (Ecowitt GW1100), " +
+                      "lawn care management, and GDD tracking."
     });
 });
 
@@ -36,9 +45,47 @@ var projectId = builder.Configuration["Firestore:ProjectId"]
         "Firestore:ProjectId is not configured. " +
         "Set it in appsettings.json or via FIRESTORE__PROJECTID environment variable.");
 
-builder.Services.AddSingleton(_ => FirestoreDb.Create(projectId));
+var credentialFile = builder.Configuration["Firestore:CredentialFile"];
+builder.Services.AddSingleton(_ =>
+{
+    var dbBuilder = new FirestoreDbBuilder { ProjectId = projectId };
+    if (!string.IsNullOrEmpty(credentialFile))
+        dbBuilder.CredentialsPath = credentialFile;
+    return dbBuilder.Build();
+});
+
+// ── Firebase JWT Authentication ──────────────────────────────────────────────
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.Authority = $"https://securetoken.google.com/{projectId}";
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = $"https://securetoken.google.com/{projectId}",
+            ValidateAudience = true,
+            ValidAudience = projectId,
+            ValidateLifetime = true,
+        };
+    });
+
+builder.Services.AddAuthorization();
+
+// ── HttpClient for external APIs (Open-Meteo, Discord, Zippopotam.us) ───────
+builder.Services.AddHttpClient();
+
+// ── Application Services ─────────────────────────────────────────────────────
 builder.Services.AddScoped<IWeatherService, WeatherService>();
 builder.Services.AddScoped<ILawnCareTaskService, LawnCareTaskService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IZoneService, ZoneService>();
+builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<ITreatmentService, TreatmentService>();
+builder.Services.AddScoped<IEquipmentService, EquipmentService>();
+builder.Services.AddScoped<ISoilTestService, SoilTestService>();
+builder.Services.AddScoped<IGddApiService, GddApiService>();
+builder.Services.AddScoped<ISeasonalService, SeasonalService>();
+builder.Services.AddScoped<DiscordNotificationService>();
 
 var app = builder.Build();
 
@@ -49,8 +96,30 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
 app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// ── Ensures all DateTime values round-trip as UTC for Firestore compatibility ─
+public class UtcDateTimeConverter : JsonConverter<DateTime>
+{
+    public override DateTime Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var dt = reader.GetDateTime();
+        return dt.Kind switch
+        {
+            DateTimeKind.Utc => dt,
+            DateTimeKind.Local => dt.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc), // Unspecified → treat as UTC
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, DateTime value, JsonSerializerOptions options)
+    {
+        var utc = value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime();
+        writer.WriteStringValue(utc.ToString("O"));
+    }
+}

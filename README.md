@@ -1,114 +1,104 @@
-# lawncare-api
+# Lawncare API
 
-A minimal **ASP.NET Core 8** REST API that:
-- **Ingests real-time sensor data** pushed by an Ecowitt **GW1100** gateway (with **WH51** soil-moisture meters and **WN32** outdoor temperature/humidity sensor)
-- **Serves weather data** to an ESP-controlled display (compact `/api/weather/display` endpoint) and an Angular PWA
-- **Manages lawn care tasks** (full CRUD) for the Angular PWA
-- **Persists all data** in Google Cloud Firestore (Firebase)
+ASP.NET Core 8 REST API for the Lawncare PWA. Manages lawn care data (zones, products, treatments, equipment, soil tests, GDD tracking, seasonal plans) and ingests weather data from an Ecowitt GW1100 gateway for an ESP32 display.
 
----
+All data is persisted in Google Cloud Firestore. Authenticated endpoints use Firebase JWT tokens.
 
-## Project structure
+## Architecture
+
+```
+Angular PWA ──► Firebase Hosting ──► /api/** rewrite ──► Cloud Run (.NET API) ──► Firestore
+Ecowitt GW1100 ──► POST /api/weather/ecowitt ──────────► Cloud Run (.NET API) ──► Firestore
+ESP32 Display  ──► GET  /api/weather/display  ──────────► Cloud Run (.NET API) ──► Firestore
+```
+
+## Project Structure
 
 ```
 LawncareApi/
-├── Controllers/
-│   ├── WeatherController.cs   # Ecowitt ingestion + weather read endpoints
-│   └── TasksController.cs     # Lawn care task CRUD
-├── Models/
-│   ├── EcowittReading.cs      # Raw Ecowitt push payload (form-encoded)
-│   ├── WeatherReading.cs      # Normalised metric reading (stored in Firestore)
-│   └── LawnCareTask.cs        # Lawn care task model + request DTO
-├── Services/
-│   ├── IWeatherService.cs / WeatherService.cs
-│   ├── ILawnCareTaskService.cs / LawnCareTaskService.cs
-│   └── EcowittMapper.cs       # Converts Ecowitt imperial → metric
-├── Program.cs
-└── appsettings.json
-LawncareApi.Tests/             # xUnit unit tests (in-memory stubs, no Firestore needed)
+├── Controllers/         # 9 controllers, 35 endpoints
+├── Models/              # Firestore models + request DTOs
+├── Services/            # Business logic + Firestore access
+├── Extensions/          # ClaimsPrincipal helpers
+├── Program.cs           # DI, auth, middleware
+├── appsettings.json     # Config (project ID, CORS origins)
+└── firebase-service-account.json  # Local dev only (gitignored)
+LawncareApi.Tests/       # xUnit tests (in-memory, no Firestore needed)
+Dockerfile               # Multi-stage build for Cloud Run
 ```
-
----
 
 ## Prerequisites
 
 | Tool | Version |
 |------|---------|
-| .NET SDK | 8.0 |
-| Firebase project | any – Firestore must be enabled |
-| Google Application Default Credentials | set before running |
+| .NET SDK | 8.0+ |
+| Firebase project | Firestore enabled |
+| Google Cloud CLI | For deployment |
 
----
+## Local Development
 
-## Configuration
+1. **Get a Firebase service account key:**
+   - Firebase Console → Project Settings → Service accounts → Generate new private key
+   - Save as `LawncareApi/firebase-service-account.json`
 
-Edit `LawncareApi/appsettings.json` (or set environment variables):
+2. **Run the API:**
+   ```bash
+   cd LawncareApi
+   dotnet run
+   ```
+   Swagger UI: http://localhost:5021/swagger
 
-```json
-{
-  "Firestore": {
-    "ProjectId": "your-firebase-project-id"
-  },
-  "Cors": {
-    "AllowedOrigins": [
-      "http://localhost:4200",
-      "https://your-app.web.app"
-    ]
-  }
-}
-```
+## API Endpoints
 
-**Authentication:** The API uses [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials).  
-For local development: `gcloud auth application-default login`  
-For Cloud Run / Firebase Hosting rewrites: attach a service account with `roles/datastore.user`.
+### Weather (no auth — Ecowitt/ESP32 compatible)
 
----
+| Method | Route | Description |
+|--------|-------|-------------|
+| POST | `/api/weather/ecowitt` | Receive Ecowitt GW1100 sensor push |
+| GET | `/api/weather/current` | Latest weather reading |
+| GET | `/api/weather/display` | Condensed snapshot for ESP32 |
+| GET | `/api/weather/history?from=&to=&limit=` | Historical readings |
 
-## Running locally
+### User (auth required)
 
-```bash
-cd LawncareApi
-dotnet run
-# Swagger UI → https://localhost:{port}/swagger
-```
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/api/user` | Get profile |
+| POST | `/api/user` | Create profile |
+| PUT | `/api/user` | Update profile |
 
----
+### Zones, Products, Treatments, Equipment, Soil Tests (auth required)
 
-## API endpoints
+Standard CRUD on `/api/zones`, `/api/products`, `/api/treatments`, `/api/equipment`, `/api/soiltests`.
 
-### Weather
+Equipment also has `/api/equipment/logs` for maintenance logs.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/weather/ecowitt` | Receive Ecowitt GW1100 Custom Server push (form-encoded) |
-| `GET`  | `/api/weather/current` | Latest full weather reading |
-| `GET`  | `/api/weather/display` | Condensed snapshot for ESP display |
-| `GET`  | `/api/weather/history?from=&to=&limit=` | Historical readings (UTC, newest first) |
+### GDD and Seasonal (auth required)
 
-#### Ecowitt gateway setup
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/api/gdd` | Calculate GDD from user profile settings |
+| GET | `/api/seasonal/{year}` | Get seasonal task statuses |
+| PUT | `/api/seasonal` | Save seasonal task statuses |
 
-In the Ecowitt **WS View / WS Tool** app → *Others* → *Customized*:
-- Protocol: **Ecowitt** or **Wunderground** (Ecowitt form-encoded is the default)
-- Server IP / hostname: your API host
+### Ecowitt Gateway Setup
+
+In the WS View / WS Tool app → Others → Customized:
+- Protocol: Ecowitt
+- Server: your Cloud Run URL or Firebase Hosting domain
 - Path: `/api/weather/ecowitt`
-- Port & interval: as desired
 
-### Lawn care tasks
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`    | `/api/tasks`      | List all tasks |
-| `POST`   | `/api/tasks`      | Create a task |
-| `GET`    | `/api/tasks/{id}` | Get task by ID |
-| `PUT`    | `/api/tasks/{id}` | Update task |
-| `DELETE` | `/api/tasks/{id}` | Delete task |
-
----
-
-## Running tests
+## Running Tests
 
 ```bash
-dotnet test LawncareApi.slnx
+dotnet test LawncareApi.Tests/LawncareApi.Tests.csproj
 ```
 
-Tests use in-memory service stubs — no Firestore or network access required.
+## Deploying to Cloud Run
+
+```bash
+gcloud config set project lawncare-7fa77
+gcloud run deploy lawncare-api --source . --region us-central1 --allow-unauthenticated --set-env-vars "Firestore__ProjectId=lawncare-7fa77"
+```
+
+On Cloud Run, Firestore credentials are automatic via the service account — no key file needed.

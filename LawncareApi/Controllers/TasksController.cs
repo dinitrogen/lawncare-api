@@ -1,5 +1,6 @@
 using LawncareApi.Models;
 using LawncareApi.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LawncareApi.Controllers;
@@ -7,6 +8,7 @@ namespace LawncareApi.Controllers;
 /// <summary>CRUD endpoints for lawn care tasks consumed by the Angular PWA.</summary>
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class TasksController : ControllerBase
 {
     private readonly ILawnCareTaskService _taskService;
