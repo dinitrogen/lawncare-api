@@ -105,6 +105,22 @@ app.Use(async (context, next) =>
     await next();
 });
 
+// Log all incoming requests (path, method, content-type) for debugging gateway issues
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation(
+        "Request: {Method} {Path} Content-Type={ContentType} Content-Length={ContentLength} From={RemoteIp}",
+        context.Request.Method,
+        context.Request.Path,
+        context.Request.ContentType ?? "(none)",
+        context.Request.ContentLength,
+        context.Connection.RemoteIpAddress);
+    await next();
+    logger.LogInformation("Response: {StatusCode} for {Method} {Path}",
+        context.Response.StatusCode, context.Request.Method, context.Request.Path);
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

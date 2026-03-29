@@ -29,7 +29,6 @@ public class WeatherController : ControllerBase
     /// <param name="reading">Form fields automatically bound from the Ecowitt POST body.</param>
     /// <param name="ct">Cancellation token.</param>
     [HttpPost("ecowitt")]
-    [Consumes("application/x-www-form-urlencoded")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ReceiveEcowittData(
