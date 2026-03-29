@@ -97,6 +97,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
+
+// Prevent Firebase Hosting CDN from caching API responses
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["Cache-Control"] = "no-store";
+    await next();
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
