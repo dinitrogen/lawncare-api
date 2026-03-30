@@ -1,14 +1,23 @@
 using LawncareApi.Controllers;
 using LawncareApi.Models;
+using LawncareApi.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LawncareApi.Tests;
 
+/// <summary>Stub that returns an empty forecast so controller tests don't need Open-Meteo.</summary>
+internal sealed class StubForecastService : IForecastService
+{
+    public Task<WeatherForecastResponse> GetForecastAsync(
+        double lat, double lon, int cacheDurationMinutes = 60, CancellationToken ct = default)
+        => Task.FromResult(new WeatherForecastResponse());
+}
+
 public class WeatherControllerTests
 {
     private static WeatherController CreateController(InMemoryWeatherService? svc = null) =>
-        new(svc ?? new InMemoryWeatherService(), NullLogger<WeatherController>.Instance);
+        new(svc ?? new InMemoryWeatherService(), new StubForecastService(), NullLogger<WeatherController>.Instance);
 
     [Fact]
     public async Task GetCurrent_ReturnsNotFound_WhenNoReadingsExist()
