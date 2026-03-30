@@ -89,7 +89,8 @@ public class WeatherController : ControllerBase
             rainRateMmh = reading.RainRateMmh,
             pressureHpa = reading.PressureRelHpa,
             uvIndex = reading.UvIndex,
-            soilMoisturePct = reading.SoilMoisturePct
+            soilMoisturePct = reading.SoilMoisturePct,
+            indoorTempC = reading.IndoorTempC
         });
     }
 

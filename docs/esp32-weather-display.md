@@ -28,7 +28,9 @@ Build a compact weather station display using an **Arduino Nano ESP32** and a **
 | Jumper wires | Female-to-male, 8–10 pcs | For SPI + power connections |
 | Micro-USB or USB-C cable | Data-capable | For programming and power |
 
-> **Alternative displays:** The 2.4" ILI9341 (same driver, 320×240) works identically. For larger displays, a 3.5" ILI9488 (480×320) uses the same SPI wiring but requires the `TFT_eSPI` driver change to `ILI9488`.
+> **Alternative displays:** The 2.4" ILI9341 (same driver, 320×240) works identically.
+
+> **⚠ Important: Do NOT use TFT_eSPI on this board.** The Arduino Nano ESP32 uses a pin remap layer (`BOARD_HAS_PIN_REMAP`) that translates Arduino D-pin numbers to raw ESP32-S3 GPIOs. TFT_eSPI mixes Arduino SPI calls (which go through the remap) with raw ESP-IDF GPIO calls (which bypass it), causing pin mismatches that crash the firmware and can brick USB. Use **Adafruit_ILI9341 + Adafruit_GFX** instead — they use only standard Arduino SPI, so the remap works correctly.
 
 ---
 
@@ -69,32 +71,23 @@ board = arduino_nano_esp32
 framework = arduino
 monitor_speed = 115200
 upload_speed = 921600
+upload_protocol = esptool
 
-; Required for TFT_eSPI to find our custom config
+; Pin definitions (Arduino D-pin numbers, remap layer handles GPIO translation)
 build_flags =
-    -DUSER_SETUP_LOADED=1
-    -DILI9341_DRIVER=1
-    -DTFT_MOSI=11
-    -DTFT_SCLK=13
     -DTFT_CS=10
     -DTFT_DC=9
     -DTFT_RST=8
-    -DSPI_FREQUENCY=40000000
-    -DLOAD_GLCD=1
-    -DLOAD_FONT2=1
-    -DLOAD_FONT4=1
-    -DLOAD_FONT6=1
-    -DLOAD_FONT7=1
-    -DLOAD_FONT8=1
-    -DLOAD_GFXFF=1
-    -DSMOOTH_FONT=1
 
 lib_deps =
-    bodmer/TFT_eSPI@^2.5.43
+    adafruit/Adafruit ILI9341@^1.6.1
+    adafruit/Adafruit GFX Library@^1.11.11
     bblanchon/ArduinoJson@^7.3.0
 ```
 
-> **Why build_flags instead of User_Setup.h?** Defining the pins and driver in `build_flags` avoids needing to edit files inside the TFT_eSPI library folder, making the project self-contained and portable.
+> **Why Adafruit_ILI9341 instead of TFT_eSPI?** The Arduino Nano ESP32 has a pin remap layer that translates D-pin numbers to raw GPIOs. TFT_eSPI bypasses this with raw ESP-IDF calls, causing pin mismatches and firmware crashes. Adafruit_ILI9341 uses only standard Arduino SPI and works correctly.
+
+> **Why `upload_protocol = esptool`?** The default DFU upload protocol requires a WinUSB driver installed via Zadig. The `esptool` protocol works out of the box on Windows.
 
 ---
 
@@ -106,13 +99,15 @@ lib_deps =
 |---|---|---|---|
 | **VCC** | 3V3 | — | 3.3V supply (do NOT use 5V — the ILI9341 is 3.3V logic) |
 | **GND** | GND | — | Common ground |
-| **CS** | D10 | GPIO10 | Chip Select |
-| **RESET** | D8 | GPIO8 | Hardware reset |
-| **DC/RS** | D9 | GPIO9 | Data/Command select |
-| **SDI/MOSI** | D11 | GPIO11 | SPI data in |
-| **SCK** | D13 | GPIO13 | SPI clock |
+| **CS** | D10 | GPIO21 | Chip Select |
+| **RESET** | D8 | GPIO17 | Hardware reset |
+| **DC/RS** | D9 | GPIO18 | Data/Command select |
+| **SDI/MOSI** | D11 | GPIO38 | SPI data in |
+| **SCK** | D13 | GPIO48 | SPI clock |
 | **LED** | 3V3 | — | Backlight (tie to 3.3V for always-on, or use a GPIO + transistor for brightness control) |
-| **SDO/MISO** | D12 | GPIO12 | SPI data out (optional — only needed for reading from display) |
+| **SDO/MISO** | D12 | GPIO47 | SPI data out (optional — only needed for reading from display) |
+
+> **Pin remap note:** The Arduino Nano ESP32 remaps D-pin numbers to different raw GPIOs. In firmware, always use D-pin numbers (D8, D9, D10, etc.) — the Arduino core translates them automatically. The GPIO column above is for reference only.
 
 ```
 Arduino Nano ESP32          ILI9341 TFT
@@ -139,10 +134,11 @@ PlatformIO handles this automatically via `lib_deps` in `platformio.ini`. The tw
 
 | Library | Purpose |
 |---|---|
-| **TFT_eSPI** | Hardware-accelerated TFT driver (SPI). Supports ILI9341 natively. |
+| **Adafruit ILI9341** | ILI9341 TFT driver using standard Arduino SPI. Compatible with Nano ESP32 pin remap. |
+| **Adafruit GFX** | Graphics primitives (text, shapes, colors). Required by Adafruit ILI9341. |
 | **ArduinoJson** | Parse JSON responses from the Lawncare API |
 
-Both are downloaded on first build. No manual install needed.
+All are downloaded automatically on first build via `lib_deps`. No manual install needed.
 
 ---
 
@@ -303,22 +299,26 @@ The display consumes two unauthenticated endpoints. No API key or JWT token requ
 
 ```cpp
 #include <Arduino.h>
+#include <SPI.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <TFT_eSPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
 #include "config.h"
 
 // ── Display ─────────────────────────────────────────────────────────────
-TFT_eSPI tft = TFT_eSPI();
+Adafruit_ILI9341 tft(TFT_CS, TFT_DC, TFT_RST);
 
-// ── Color palette ───────────────────────────────────────────────────────
-#define BG_COLOR     TFT_BLACK
-#define TEXT_COLOR   TFT_WHITE
-#define ACCENT_COLOR 0x2E04  // ~#2e7d32 green in RGB565
+// ── Color palette (RGB565) ──────────────────────────────────────────────────
+#define BG_COLOR     ILI9341_BLACK
+#define TEXT_COLOR   ILI9341_WHITE
+#define ACCENT_COLOR 0x2E04  // ~#2e7d32 green
 #define TEMP_COLOR   0xFD20  // warm orange
 #define RAIN_COLOR   0x5D7F  // light blue
 #define DIVIDER_CLR  0x4208  // dark gray
+#define GREY_LIGHT   0xC618  // light grey
+#define GREY_DARK    0x7BEF  // dark grey
 
 // ── State ───────────────────────────────────────────────────────────────
 struct CurrentWeather {
@@ -369,55 +369,71 @@ void drawDivider(int y) {
   tft.drawFastHLine(4, y, 312, DIVIDER_CLR);
 }
 
+// Print text at (x,y) with given size and color
+void drawText(const char* text, int x, int y, uint8_t sz, uint16_t color) {
+  tft.setTextSize(sz);
+  tft.setTextColor(color, BG_COLOR);
+  tft.setCursor(x, y);
+  tft.print(text);
+}
+
+// Print right-aligned text
+void drawTextRight(const char* text, int rightX, int y, uint8_t sz, uint16_t color) {
+  tft.setTextSize(sz);
+  int16_t x1, y1; uint16_t w, h;
+  tft.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+  tft.setTextColor(color, BG_COLOR);
+  tft.setCursor(rightX - w, y);
+  tft.print(text);
+}
+
+// Get pixel width of text at given size
+int textWidth(const char* text, uint8_t sz) {
+  tft.setTextSize(sz);
+  int16_t x1, y1; uint16_t w, h;
+  tft.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+  return w;
+}
+
 /// Draw a simple weather icon at (x,y) based on the WMO code.
 void drawWeatherIcon(int x, int y, int code) {
   if (code == 0) {
-    // Sun
-    tft.fillCircle(x, y, 10, TFT_YELLOW);
+    tft.fillCircle(x, y, 10, ILI9341_YELLOW);
     for (int a = 0; a < 360; a += 45) {
-      int x2 = x + 15 * cos(a * DEG_TO_RAD);
-      int y2 = y + 15 * sin(a * DEG_TO_RAD);
-      tft.drawLine(x + 12*cos(a*DEG_TO_RAD), y + 12*sin(a*DEG_TO_RAD), x2, y2, TFT_YELLOW);
+      float rad = a * DEG_TO_RAD;
+      int x2 = x + 15 * cos(rad);
+      int y2 = y + 15 * sin(rad);
+      tft.drawLine(x + 12*cos(rad), y + 12*sin(rad), x2, y2, ILI9341_YELLOW);
     }
   } else if (code <= 2) {
-    // Partly cloudy: small sun + cloud
-    tft.fillCircle(x - 5, y - 5, 7, TFT_YELLOW);
-    tft.fillRoundRect(x - 8, y - 2, 22, 12, 5, TFT_LIGHTGREY);
+    tft.fillCircle(x - 5, y - 5, 7, ILI9341_YELLOW);
+    tft.fillRoundRect(x - 8, y - 2, 22, 12, 5, GREY_LIGHT);
   } else if (code == 3) {
-    // Overcast
-    tft.fillRoundRect(x - 10, y - 5, 22, 12, 5, TFT_LIGHTGREY);
+    tft.fillRoundRect(x - 10, y - 5, 22, 12, 5, GREY_LIGHT);
   } else if (code == 45 || code == 48) {
-    // Fog: horizontal dashes
-    for (int i = 0; i < 4; i++) {
-      tft.drawFastHLine(x - 10, y - 4 + i*4, 20, TFT_LIGHTGREY);
-    }
+    for (int i = 0; i < 4; i++)
+      tft.drawFastHLine(x - 10, y - 4 + i*4, 20, GREY_LIGHT);
   } else if (code >= 51 && code <= 57) {
-    // Drizzle
-    tft.fillRoundRect(x - 10, y - 6, 22, 10, 5, TFT_LIGHTGREY);
+    tft.fillRoundRect(x - 10, y - 6, 22, 10, 5, GREY_LIGHT);
     for (int i = 0; i < 3; i++) tft.fillCircle(x - 6 + i*6, y + 8, 1, RAIN_COLOR);
   } else if ((code >= 61 && code <= 65) || (code >= 80 && code <= 82)) {
-    // Rain
-    tft.fillRoundRect(x - 10, y - 6, 22, 10, 5, TFT_DARKGREY);
+    tft.fillRoundRect(x - 10, y - 6, 22, 10, 5, GREY_DARK);
     for (int i = 0; i < 3; i++) tft.drawLine(x - 6 + i*6, y + 4, x - 8 + i*6, y + 10, RAIN_COLOR);
   } else if (code == 66 || code == 67) {
-    // Freezing rain
-    tft.fillRoundRect(x - 10, y - 6, 22, 10, 5, TFT_DARKGREY);
-    for (int i = 0; i < 3; i++) tft.drawLine(x - 6 + i*6, y + 4, x - 8 + i*6, y + 10, TFT_CYAN);
+    tft.fillRoundRect(x - 10, y - 6, 22, 10, 5, GREY_DARK);
+    for (int i = 0; i < 3; i++) tft.drawLine(x - 6 + i*6, y + 4, x - 8 + i*6, y + 10, ILI9341_CYAN);
   } else if (code >= 71 && code <= 86) {
-    // Snow
-    tft.fillRoundRect(x - 10, y - 6, 22, 10, 5, TFT_LIGHTGREY);
+    tft.fillRoundRect(x - 10, y - 6, 22, 10, 5, GREY_LIGHT);
     for (int i = 0; i < 3; i++) {
       int cx = x - 6 + i*6;
-      tft.drawLine(cx-3, y+7, cx+3, y+7, TFT_WHITE);
-      tft.drawLine(cx, y+4, cx, y+10, TFT_WHITE);
+      tft.drawLine(cx-3, y+7, cx+3, y+7, ILI9341_WHITE);
+      tft.drawLine(cx, y+4, cx, y+10, ILI9341_WHITE);
     }
   } else if (code >= 95) {
-    // Thunderstorm
-    tft.fillRoundRect(x - 10, y - 6, 22, 10, 5, TFT_DARKGREY);
-    // Lightning bolt
-    tft.drawLine(x, y + 4, x - 3, y + 9, TFT_YELLOW);
-    tft.drawLine(x - 3, y + 9, x + 1, y + 9, TFT_YELLOW);
-    tft.drawLine(x + 1, y + 9, x - 2, y + 14, TFT_YELLOW);
+    tft.fillRoundRect(x - 10, y - 6, 22, 10, 5, GREY_DARK);
+    tft.drawLine(x, y + 4, x - 3, y + 9, ILI9341_YELLOW);
+    tft.drawLine(x - 3, y + 9, x + 1, y + 9, ILI9341_YELLOW);
+    tft.drawLine(x + 1, y + 9, x - 2, y + 14, ILI9341_YELLOW);
   }
 }
 
@@ -425,26 +441,24 @@ void drawWeatherIcon(int x, int y, int code) {
 
 void connectWiFi() {
   tft.fillScreen(BG_COLOR);
-  tft.setTextColor(TEXT_COLOR, BG_COLOR);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString("Connecting to WiFi...", 160, 110, 4);
+  drawText("Connecting to WiFi...", 20, 100, 2, TEXT_COLOR);
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 30) {
     delay(500);
-    tft.drawString(".", 100 + attempts * 6, 140, 2);
+    tft.print(".");
     attempts++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
     tft.fillScreen(BG_COLOR);
-    tft.drawString("Connected!", 160, 110, 4);
-    tft.drawString(WiFi.localIP().toString().c_str(), 160, 140, 2);
+    drawText("Connected!", 60, 100, 2, TEXT_COLOR);
+    drawText(WiFi.localIP().toString().c_str(), 60, 125, 1, GREY_LIGHT);
     delay(1000);
   } else {
-    tft.fillScreen(TFT_RED);
-    tft.drawString("WiFi Failed!", 160, 120, 4);
+    tft.fillScreen(ILI9341_RED);
+    drawText("WiFi Failed!", 60, 110, 2, TEXT_COLOR);
     delay(3000);
     ESP.restart();
   }
@@ -548,183 +562,151 @@ void drawScreen1() {
   tft.fillScreen(BG_COLOR);
 
   if (!current.valid) {
-    tft.setTextDatum(MC_DATUM);
-    tft.drawString("Waiting for data...", 160, 120, 4);
+    drawText("Waiting for data...", 30, 110, 2, TEXT_COLOR);
     return;
   }
 
-  // ── Row 1: Large temperature + condition ──────────────────────────────
+  // ── Row 1: Large temperature ──────────────────────────────────────────
   int tempF = (int)round(cToF(current.tempC));
   char tempStr[8];
   snprintf(tempStr, sizeof(tempStr), "%d", tempF);
 
-  tft.setTextColor(TEMP_COLOR, BG_COLOR);
-  tft.setTextDatum(TL_DATUM);
-  tft.drawString(tempStr, 10, 8, 7);  // Large font
+  drawText(tempStr, 10, 6, 5, TEMP_COLOR);
+  int tw = textWidth(tempStr, 5);
+  drawText("F", 14 + tw, 10, 2, TEXT_COLOR);
 
-  // Degree symbol + F
-  int tw = tft.textWidth(tempStr, 7);
-  tft.setTextColor(TEXT_COLOR, BG_COLOR);
-  tft.drawString("F", 10 + tw + 4, 12, 4);
-
-  // Condition text (right-aligned)
   if (forecast.valid) {
-    tft.setTextDatum(TR_DATUM);
-    tft.setTextColor(TEXT_COLOR, BG_COLOR);
-    tft.drawString(forecast.today.condition, 290, 12, 2);
-    drawWeatherIcon(305, 18, forecast.today.weatherCode);
+    drawTextRight(forecast.today.condition, 290, 10, 1, TEXT_COLOR);
+    drawWeatherIcon(305, 16, forecast.today.weatherCode);
   }
 
-  // Feels like
   int feelsF = (int)round(cToF(current.feelsLikeC));
   char feelsStr[32];
   snprintf(feelsStr, sizeof(feelsStr), "Feels like %dF", feelsF);
-  tft.setTextDatum(TL_DATUM);
-  tft.setTextColor(TFT_LIGHTGREY, BG_COLOR);
-  tft.drawString(feelsStr, 10, 62, 2);
+  drawText(feelsStr, 10, 50, 1, GREY_LIGHT);
 
-  drawDivider(80);
+  drawDivider(62);
 
   // ── Row 2: Humidity, Wind, Rain ───────────────────────────────────────
-  tft.setTextColor(TEXT_COLOR, BG_COLOR);
-  tft.setTextDatum(TL_DATUM);
-
   char hum[16]; snprintf(hum, sizeof(hum), "%d%%", current.humidityPct);
   char wind[16]; snprintf(wind, sizeof(wind), "%.0f km/h", current.windKmh);
   char rain[16]; snprintf(rain, sizeof(rain), "%.1fmm", current.rainTodayMm);
 
-  tft.setTextColor(RAIN_COLOR, BG_COLOR);
-  tft.drawString(hum, 20, 88, 2);
-  tft.setTextColor(TEXT_COLOR, BG_COLOR);
-  tft.drawString(wind, 110, 88, 2);
-  tft.setTextColor(RAIN_COLOR, BG_COLOR);
-  tft.drawString(rain, 220, 88, 2);
+  drawText(hum,  20,  68, 2, RAIN_COLOR);
+  drawText(wind, 110, 68, 2, TEXT_COLOR);
+  drawText(rain, 220, 68, 2, RAIN_COLOR);
 
-  // Labels
-  tft.setTextColor(TFT_DARKGREY, BG_COLOR);
-  tft.drawString("Humidity", 20, 106, 1);
-  tft.drawString("Wind", 110, 106, 1);
-  tft.drawString("Rain", 220, 106, 1);
+  drawText("Humidity", 20,  86, 1, GREY_DARK);
+  drawText("Wind",     110, 86, 1, GREY_DARK);
+  drawText("Rain",     220, 86, 1, GREY_DARK);
 
-  drawDivider(120);
+  drawDivider(98);
 
   // ── Row 3: Today's forecast ───────────────────────────────────────────
   if (forecast.valid) {
-    tft.setTextColor(ACCENT_COLOR, BG_COLOR);
-    tft.drawString("TODAY", 10, 126, 2);
-    tft.setTextColor(TEXT_COLOR, BG_COLOR);
+    drawText("TODAY", 10, 104, 2, ACCENT_COLOR);
 
     char todayHL[32];
     snprintf(todayHL, sizeof(todayHL), "Hi %.0fF  Lo %.0fF",
              forecast.today.tempMaxF, forecast.today.tempMinF);
-    tft.drawString(todayHL, 75, 126, 2);
+    drawText(todayHL, 80, 104, 2, TEXT_COLOR);
 
-    drawWeatherIcon(20, 150, forecast.today.weatherCode);
+    drawWeatherIcon(20, 130, forecast.today.weatherCode);
     char todayCond[40];
     snprintf(todayCond, sizeof(todayCond), "%s  %d%%",
              forecast.today.condition, forecast.today.precipPct);
-    tft.drawString(todayCond, 40, 146, 2);
+    drawText(todayCond, 40, 126, 1, TEXT_COLOR);
   }
 
-  drawDivider(168);
+  drawDivider(142);
 
   // ── Row 4: Tomorrow's forecast ────────────────────────────────────────
   if (forecast.valid && forecast.dayCount >= 2) {
     ForecastDay& tmrw = forecast.daily[1];
-    tft.setTextColor(ACCENT_COLOR, BG_COLOR);
-    tft.drawString("TOMORROW", 10, 174, 2);
-    tft.setTextColor(TEXT_COLOR, BG_COLOR);
+    drawText("TOMORROW", 10, 148, 2, ACCENT_COLOR);
 
     char tmHL[32];
     snprintf(tmHL, sizeof(tmHL), "Hi %.0fF  Lo %.0fF", tmrw.tempMaxF, tmrw.tempMinF);
-    tft.drawString(tmHL, 100, 174, 2);
+    drawText(tmHL, 110, 148, 2, TEXT_COLOR);
 
-    drawWeatherIcon(20, 198, tmrw.weatherCode);
+    drawWeatherIcon(20, 174, tmrw.weatherCode);
     char tmCond[40];
     snprintf(tmCond, sizeof(tmCond), "%s  %d%%", tmrw.condition, tmrw.precipPct);
-    tft.drawString(tmCond, 40, 194, 2);
+    drawText(tmCond, 40, 170, 1, TEXT_COLOR);
   }
 
-  drawDivider(216);
+  drawDivider(186);
 
   // ── Row 5: Soil moisture ──────────────────────────────────────────────
   if (current.soilChannels > 0) {
-    tft.setTextColor(ACCENT_COLOR, BG_COLOR);
-    tft.drawString("SOIL", 10, 224, 2);
-    tft.setTextColor(TEXT_COLOR, BG_COLOR);
+    drawText("SOIL", 10, 192, 2, ACCENT_COLOR);
     char soil[48] = {0};
     int offset = 0;
     for (int i = 0; i < current.soilChannels && i < 4; i++) {
       offset += snprintf(soil + offset, sizeof(soil) - offset,
                          "%s%d%%", i > 0 ? "  " : "", current.soilMoisture[i]);
     }
-    tft.drawString(soil, 60, 224, 2);
+    drawText(soil, 60, 192, 2, TEXT_COLOR);
   }
+
+  // ── Row 6: UV + Pressure ────────────────────────────────────────────
+  drawDivider(210);
+  char bottom[48];
+  snprintf(bottom, sizeof(bottom), "UV: %d   %.0f hPa",
+           current.uvIndex, current.pressureHpa);
+  drawText(bottom, 10, 216, 1, GREY_LIGHT);
 }
 
 void drawScreen2() {
   tft.fillScreen(BG_COLOR);
 
   // ── Header ────────────────────────────────────────────────────────────
-  tft.setTextColor(ACCENT_COLOR, BG_COLOR);
-  tft.setTextDatum(TL_DATUM);
-  tft.drawString("5-DAY FORECAST", 10, 6, 4);
-
-  drawDivider(30);
+  drawText("5-DAY FORECAST", 10, 4, 2, ACCENT_COLOR);
+  drawDivider(22);
 
   if (!forecast.valid || forecast.dayCount < 2) {
-    tft.setTextColor(TEXT_COLOR, BG_COLOR);
-    tft.setTextDatum(MC_DATUM);
-    tft.drawString("No forecast data", 160, 120, 2);
+    drawText("No forecast data", 60, 110, 2, TEXT_COLOR);
     return;
   }
 
   // ── Forecast rows (skip today = index 0, show 1..5) ──────────────────
-  int y = 38;
+  int y = 28;
   int shown = 0;
   for (int i = 1; i < forecast.dayCount && shown < 5; i++, shown++) {
     ForecastDay& d = forecast.daily[i];
 
-    // Day abbreviation from date string (parse "YYYY-MM-DD")
+    // Day abbreviation
     struct tm tm = {0};
     sscanf(d.date, "%d-%d-%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday);
     tm.tm_year -= 1900;
     tm.tm_mon  -= 1;
     mktime(&tm);
     const char* days[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
-    const char* dayName = days[tm.tm_wday];
 
-    tft.setTextColor(TEXT_COLOR, BG_COLOR);
-    tft.setTextDatum(TL_DATUM);
-    tft.drawString(dayName, 10, y, 2);
-
+    drawText(days[tm.tm_wday], 10, y, 2, TEXT_COLOR);
     drawWeatherIcon(60, y + 7, d.weatherCode);
 
     char hl[24];
     snprintf(hl, sizeof(hl), "%.0f / %.0fF", d.tempMaxF, d.tempMinF);
-    tft.drawString(hl, 85, y, 2);
+    drawText(hl, 85, y, 2, TEXT_COLOR);
 
     char pr[8];
     snprintf(pr, sizeof(pr), "%d%%", d.precipPct);
-    tft.setTextColor(RAIN_COLOR, BG_COLOR);
-    tft.drawString(pr, 270, y, 2);
+    drawText(pr, 270, y, 2, RAIN_COLOR);
 
-    // Condition on second line
-    tft.setTextColor(TFT_DARKGREY, BG_COLOR);
-    tft.drawString(d.condition, 85, y + 18, 1);
+    drawText(d.condition, 85, y + 18, 1, GREY_DARK);
 
-    y += 34;
+    y += 36;
   }
 
   drawDivider(y + 2);
 
   // ── Bottom bar: UV + Pressure ─────────────────────────────────────────
   if (current.valid) {
-    tft.setTextColor(TEXT_COLOR, BG_COLOR);
     char bottom[48];
     snprintf(bottom, sizeof(bottom), "UV: %d    Pressure: %.0f hPa",
              current.uvIndex, current.pressureHpa);
-    tft.drawString(bottom, 10, y + 8, 2);
+    drawText(bottom, 10, y + 8, 1, TEXT_COLOR);
   }
 }
 
@@ -734,7 +716,7 @@ void setup() {
   Serial.begin(115200);
   delay(100);
 
-  tft.init();
+  tft.begin();
   tft.setRotation(1);  // Landscape
   tft.fillScreen(BG_COLOR);
 
@@ -786,21 +768,49 @@ void loop() {
 
 ## Build & Upload
 
-1. **Build:** Click the checkmark (✓) in the PlatformIO toolbar, or `Ctrl+Alt+B`
-2. **Upload:** Click the arrow (→), or `Ctrl+Alt+U`
-3. **Monitor:** Click the plug icon (🔌), or `Ctrl+Alt+S` to open serial monitor at 115200 baud
+### Building
+
+Click the checkmark (✓) in the PlatformIO toolbar, or `Ctrl+Alt+B`.
+
+### Uploading
+
+The Arduino Nano ESP32 requires a specific upload flow on Windows because its native USB CDC port doesn't work with PlatformIO's built-in upload reliably. Use the included `flash_rescue.py` script:
+
+```bash
+python flash_rescue.py
+```
+
+The script automatically:
+1. Detects the board on its CDC port (COM4, VID `2341:0070`)
+2. Sends a 1200-baud DTR touch via the Win32 API to trigger bootloader mode
+3. Waits for the bootloader port to appear (COM3, VID `303A:1001`)
+4. Flashes using `esptool` from PlatformIO's packages
+
+If the board doesn't appear automatically, **double-tap the reset button** to force bootloader mode.
+
+> **Important:** Close any serial monitor before flashing — it locks the COM port.
+
+### Serial Monitor
+
+```bash
+pio device monitor --port COM4 --baud 115200
+```
+
+Or click the plug icon in the PlatformIO toolbar.
 
 ### Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| **White screen** | Check wiring, especially DC and RST pins. Verify `TFT_DC` and `TFT_RST` in build_flags match your wiring. |
-| **Garbled display** | SPI frequency too high. Lower `SPI_FREQUENCY` to `27000000`. |
+| **White screen** | Check wiring (especially DC, RST, CS). Verify `TFT_DC`, `TFT_RST`, `TFT_CS` in build_flags match your wiring. |
+| **Firmware crashes / USB disappears** | **Do NOT use TFT_eSPI** on this board — it bypasses the pin remap layer and crashes. Use Adafruit_ILI9341. |
+| **Upload fails — "Cannot configure port"** | Close the serial monitor first. The COM port can only be opened by one process. |
+| **Upload fails — port not found** | Double-tap the reset button to enter bootloader mode, then run `flash_rescue.py`. |
+| **Board bricked — no USB at all** | Bad firmware crashed the USB stack. Double-tap reset rapidly — you have a ~300ms bootloader window. The `flash_rescue.py` script polls every 100ms to catch it. |
 | **WiFi won't connect** | Check SSID/password in `config.h`. Ensure 2.4 GHz network (ESP32-S3 doesn't support 5 GHz). |
 | **API returns 404** | Verify the Ecowitt relay is running and has posted at least one reading. |
-| **JSON parse error** | Increase ArduinoJson capacity or check API response with `Serial.println(http.getString())`. |
-| **Upload fails** | Hold **BOOT** button, click **Upload**, release BOOT after "Connecting..." appears. |
-| **Port not found** | Windows: Check Device Manager for COM port. Try a different USB-C cable (must be data-capable). |
+| **JSON parse error** | Check API response with `Serial.println(http.getString())`. |
+| **DFU upload protocol fails** | Use `upload_protocol = esptool` in platformio.ini. DFU requires WinUSB driver via Zadig. |
 
 ---
 
@@ -811,3 +821,33 @@ void loop() {
 - **Enclosure:** A 3D-printed case works well. The display typically mounts with M2.5 screws. Leave ventilation holes near the ESP32.
 - **Backlight dimming:** Connect the TFT LED pin to a GPIO (e.g., D6) and use `analogWrite()` / `ledcWrite()` to dim at night.
 - **OTA updates:** Add `ArduinoOTA` to `setup()` for wireless firmware updates without re-plugging USB.
+
+---
+
+## Known Issues & Lessons Learned
+
+### TFT_eSPI is incompatible with Arduino Nano ESP32
+
+The Arduino Nano ESP32 variant (`arduino_nano_nora`) uses `BOARD_HAS_PIN_REMAP` to translate Arduino D-pin numbers (D8, D9, D10, etc.) to raw ESP32-S3 GPIOs (GPIO17, GPIO18, GPIO21, etc.).
+
+TFT_eSPI uses **both** Arduino SPI calls (which go through the remap layer) **and** raw ESP-IDF calls (`spi_bus_config_t`, `gpio_set_direction`) which bypass it. This means:
+- SPI.begin() configures the remapped GPIOs correctly
+- But TFT_eSPI's direct GPIO access uses the un-remapped numbers
+- The DC and RST pins end up pointing at wrong hardware pins
+- This can crash the firmware and stop USB from enumerating
+
+Even setting `BOARD_USES_HW_GPIO_NUMBERS=1` (which disables the remap layer entirely) doesn't help because then Arduino SPI uses the wrong pins.
+
+**Solution:** Use Adafruit_ILI9341 + Adafruit_GFX which only use standard Arduino APIs.
+
+### Windows upload quirks
+
+The Nano ESP32 has two USB identities:
+- **Normal mode:** `VID:PID = 2341:0070` — Arduino USB CDC (serial port)
+- **Bootloader mode:** `VID:PID = 303A:1001` — ESP32-S3 ROM bootloader
+
+PlatformIO's esptool can only flash in bootloader mode. To enter bootloader:
+1. Send a 1200-baud DTR touch to the CDC port (what `flash_rescue.py` does)
+2. Or double-tap the physical reset button
+
+The CDC port cannot be opened by pyserial's standard methods on Windows (you get `OSError(22)`). The `flash_rescue.py` script uses the Win32 `CreateFileW` API directly to work around this.
