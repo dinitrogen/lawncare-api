@@ -46,6 +46,9 @@ public class AppUser
     public int GddStartDay { get; set; } = 15;
 
     [FirestoreProperty]
+    public string GddSource { get; set; } = "meteo";
+
+    [FirestoreProperty]
     public int TempOffset { get; set; }
 
     [FirestoreProperty]
@@ -66,6 +69,7 @@ public class AppUserCreateRequest
     public int GddBase { get; set; } = 50;
     public int GddStartMonth { get; set; } = 2;
     public int GddStartDay { get; set; } = 15;
+    public string GddSource { get; set; } = "meteo";
     public int TempOffset { get; set; }
 }
 
@@ -79,6 +83,7 @@ public class AppUserUpdateRequest
     public int? GddStartMonth { get; set; }
     public int? GddStartDay { get; set; }
     public int? TempOffset { get; set; }
+    public string? GddSource { get; set; }
     public string? DiscordWebhookUrl { get; set; }
     public NotificationPrefs? NotificationPrefs { get; set; }
 }

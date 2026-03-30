@@ -13,16 +13,22 @@ public class GddApiService : IGddApiService
 {
     private readonly FirestoreDb _db;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IWeatherService _weatherService;
     private readonly ILogger<GddApiService> _logger;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
     };
 
-    public GddApiService(FirestoreDb db, IHttpClientFactory httpClientFactory, ILogger<GddApiService> logger)
+    public GddApiService(
+        FirestoreDb db,
+        IHttpClientFactory httpClientFactory,
+        IWeatherService weatherService,
+        ILogger<GddApiService> logger)
     {
         _db = db;
         _httpClientFactory = httpClientFactory;
+        _weatherService = weatherService;
         _logger = logger;
     }
 
@@ -33,24 +39,33 @@ public class GddApiService : IGddApiService
 
         var user = userDoc.ConvertTo<AppUser>();
 
-        double lat, lon;
-        if (user.Latitude.HasValue && user.Longitude.HasValue)
-        {
-            lat = user.Latitude.Value;
-            lon = user.Longitude.Value;
-        }
-        else
-        {
-            var geo = await GeocodeZipAsync(user.ZipCode, ct);
-            lat = geo.Lat;
-            lon = geo.Lon;
-        }
-
         var year = DateTime.UtcNow.Year;
         var startDate = $"{year}-{user.GddStartMonth:D2}-{user.GddStartDay:D2}";
         var endDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
-        var entries = await FetchAndCalculateGdd(lat, lon, startDate, endDate, user.GddBase, user.TempOffset, ct);
+        IReadOnlyList<DailyGddEntry> entries;
+
+        if (string.Equals(user.GddSource, "ecowitt", StringComparison.OrdinalIgnoreCase))
+        {
+            entries = await CalculateGddFromEcowittAsync(startDate, endDate, user.GddBase, user.TempOffset, ct);
+        }
+        else
+        {
+            double lat, lon;
+            if (user.Latitude.HasValue && user.Longitude.HasValue)
+            {
+                lat = user.Latitude.Value;
+                lon = user.Longitude.Value;
+            }
+            else
+            {
+                var geo = await GeocodeZipAsync(user.ZipCode, ct);
+                lat = geo.Lat;
+                lon = geo.Lon;
+            }
+
+            entries = await FetchAndCalculateGdd(lat, lon, startDate, endDate, user.GddBase, user.TempOffset, ct);
+        }
 
         // Cache the results
         await CacheGddDataAsync(uid, year, entries, ct);
@@ -146,6 +161,57 @@ public class GddApiService : IGddApiService
                 Date = times[i],
                 TempMax = maxTemps[i],
                 TempMin = minTemps[i],
+                Gdd = Math.Round(daily, 1),
+                CumulativeGdd = Math.Round(cumulative, 1),
+            });
+        }
+
+        return results.AsReadOnly();
+    }
+
+    private async Task<IReadOnlyList<DailyGddEntry>> CalculateGddFromEcowittAsync(
+        string startDate, string endDate, int baseTempF, int tempOffset, CancellationToken ct)
+    {
+        var from = DateTime.Parse(startDate, System.Globalization.CultureInfo.InvariantCulture);
+        var to = DateTime.Parse(endDate, System.Globalization.CultureInfo.InvariantCulture).AddDays(1);
+
+        var readings = await _weatherService.GetHistoryAsync(from, to, limit: 50000, ct);
+
+        // Group by date and compute daily high/low in Fahrenheit
+        var byDate = new Dictionary<string, (double Max, double Min)>();
+        foreach (var r in readings)
+        {
+            if (r.OutdoorTempC is null) continue;
+            var dateKey = r.Timestamp.ToString("yyyy-MM-dd");
+            var tempF = r.OutdoorTempC.Value * 9.0 / 5.0 + 32.0;
+
+            if (byDate.TryGetValue(dateKey, out var existing))
+            {
+                byDate[dateKey] = (Math.Max(existing.Max, tempF), Math.Min(existing.Min, tempF));
+            }
+            else
+            {
+                byDate[dateKey] = (tempF, tempF);
+            }
+        }
+
+        const double maxTempCap = 86.0;
+        var times = byDate.Keys.OrderBy(d => d).ToList();
+        var results = new List<DailyGddEntry>();
+        double cumulative = 0;
+
+        foreach (var date in times)
+        {
+            if (string.Compare(date, startDate, StringComparison.Ordinal) < 0) continue;
+            var (max, min) = byDate[date];
+            var tmax = Math.Min(max + tempOffset, maxTempCap);
+            var daily = Math.Max(0, (tmax + min) / 2.0 - baseTempF);
+            cumulative += daily;
+            results.Add(new DailyGddEntry
+            {
+                Date = date,
+                TempMax = max,
+                TempMin = min,
                 Gdd = Math.Round(daily, 1),
                 CumulativeGdd = Math.Round(cumulative, 1),
             });

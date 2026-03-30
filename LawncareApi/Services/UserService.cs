@@ -58,6 +58,7 @@ public class UserService : IUserService
         if (request.GddStartMonth.HasValue) user.GddStartMonth = request.GddStartMonth.Value;
         if (request.GddStartDay.HasValue) user.GddStartDay = request.GddStartDay.Value;
         if (request.TempOffset.HasValue) user.TempOffset = request.TempOffset.Value;
+        if (request.GddSource is not null) user.GddSource = request.GddSource;
         if (request.DiscordWebhookUrl is not null) user.DiscordWebhookUrl = request.DiscordWebhookUrl;
         if (request.NotificationPrefs is not null) user.NotificationPrefs = request.NotificationPrefs;
 

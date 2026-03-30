@@ -13,11 +13,16 @@ namespace LawncareApi.Controllers;
 public class WeatherController : ControllerBase
 {
     private readonly IWeatherService _weatherService;
+    private readonly IForecastService _forecastService;
     private readonly ILogger<WeatherController> _logger;
 
-    public WeatherController(IWeatherService weatherService, ILogger<WeatherController> logger)
+    public WeatherController(
+        IWeatherService weatherService,
+        IForecastService forecastService,
+        ILogger<WeatherController> logger)
     {
         _weatherService = weatherService;
+        _forecastService = forecastService;
         _logger = logger;
     }
 
@@ -106,5 +111,24 @@ public class WeatherController : ControllerBase
 
         var readings = await _weatherService.GetHistoryAsync(start, end, capped, ct);
         return Ok(readings);
+    }
+
+    /// <summary>
+    /// Returns a 7-day weather forecast from Open-Meteo for the given coordinates.
+    /// Results are cached for 60 minutes to conserve free API quota.
+    /// </summary>
+    [HttpGet("forecast")]
+    [ProducesResponseType(typeof(WeatherForecastResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetForecast(
+        [FromQuery] double lat,
+        [FromQuery] double lon,
+        CancellationToken ct = default)
+    {
+        if (lat is < -90 or > 90 || lon is < -180 or > 180)
+            return BadRequest("Invalid coordinates");
+
+        var forecast = await _forecastService.GetForecastAsync(lat, lon, cacheDurationMinutes: 60, ct);
+        return Ok(forecast);
     }
 }
