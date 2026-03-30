@@ -115,7 +115,7 @@ public class WeatherController : ControllerBase
     }
 
     /// <summary>
-    /// Returns a 7-day weather forecast from Open-Meteo for the given coordinates.
+    /// Returns a 7-day weather forecast from the National Weather Service for the given coordinates.
     /// Results are cached for 60 minutes to conserve free API quota.
     /// </summary>
     [HttpGet("forecast")]

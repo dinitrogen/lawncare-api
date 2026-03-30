@@ -224,7 +224,7 @@ The display consumes two unauthenticated endpoints. No API key or JWT token requ
 | Endpoint | Purpose | Refresh Interval |
 |---|---|---|
 | `GET /api/weather/display` | Current conditions (Ecowitt sensor data) | Every 60 seconds |
-| `GET /api/weather/forecast?lat={LAT}&lon={LON}` | 7-day forecast (Open-Meteo, cached 60 min) | Every 30 minutes |
+| `GET /api/weather/forecast?lat={LAT}&lon={LON}` | 7-day forecast (NWS, cached 60 min) | Every 30 minutes |
 
 ### `/api/weather/display` Response
 
@@ -265,7 +265,7 @@ The display consumes two unauthenticated endpoints. No API key or JWT token requ
 }
 ```
 
-> **Temperature units:** The display endpoint returns Celsius. The forecast endpoint returns Fahrenheit. The firmware converts as needed for display.
+> **Temperature units:** The display endpoint returns Celsius. The forecast endpoint returns Fahrenheit (sourced from the National Weather Service API). The firmware converts as needed for display.
 
 ---
 

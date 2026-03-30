@@ -71,7 +71,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// ── HttpClient for external APIs (Open-Meteo, Discord, Zippopotam.us) ───────
+// ── HttpClient for external APIs (NWS, Discord, Zippopotam.us) ──────────
 builder.Services.AddHttpClient();
 
 // ── Application Services ─────────────────────────────────────────────────────

@@ -52,8 +52,8 @@ public class ForecastService : IForecastService
             }
         }
 
-        // Fetch from Open-Meteo
-        var daily = await FetchFromOpenMeteoAsync(lat, lon, ct);
+        // Fetch from NWS
+        var daily = await FetchFromNwsAsync(lat, lon, ct);
 
         // Store in cache
         var entry = new ForecastCacheEntry
@@ -63,47 +63,124 @@ public class ForecastService : IForecastService
         };
         await cacheDoc.SetAsync(entry, cancellationToken: ct);
 
-        _logger.LogInformation("Forecast fetched and cached for {Key} ({Count} days)", cacheKey, daily.Count);
+        _logger.LogInformation("Forecast fetched from NWS and cached for {Key} ({Count} days)", cacheKey, daily.Count);
         return BuildResponse(daily);
     }
 
-    private async Task<List<DailyForecast>> FetchFromOpenMeteoAsync(
+    /// <summary>
+    /// Resolves lat/lon → NWS grid forecast URL (cached indefinitely since grid points don't change).
+    /// </summary>
+    private async Task<string> GetNwsForecastUrlAsync(double lat, double lon, CancellationToken ct)
+    {
+        var cacheKey = $"{Math.Round(lat, 2)}_{Math.Round(lon, 2)}";
+        var cacheDoc = _db.Collection("nws_grid_cache").Document(cacheKey);
+
+        var snapshot = await cacheDoc.GetSnapshotAsync(ct);
+        if (snapshot.Exists)
+        {
+            var cached = snapshot.ConvertTo<NwsGridPointCache>();
+            if (!string.IsNullOrEmpty(cached.ForecastUrl))
+                return cached.ForecastUrl;
+        }
+
+        var client = CreateNwsClient();
+        var json = await client.GetStringAsync($"https://api.weather.gov/points/{lat},{lon}", ct);
+        var points = JsonSerializer.Deserialize<NwsPointsResponse>(json, JsonOptions);
+        var forecastUrl = points?.Properties?.Forecast
+            ?? throw new InvalidOperationException($"NWS /points returned no forecast URL for {lat},{lon}");
+
+        await cacheDoc.SetAsync(new NwsGridPointCache
+        {
+            ForecastUrl = forecastUrl,
+            CachedAt = DateTime.UtcNow,
+        }, cancellationToken: ct);
+
+        _logger.LogInformation("NWS grid point resolved: {Url}", forecastUrl);
+        return forecastUrl;
+    }
+
+    private async Task<List<DailyForecast>> FetchFromNwsAsync(
         double lat, double lon, CancellationToken ct)
     {
-        var client = _httpClientFactory.CreateClient();
-        var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}" +
-                  "&daily=temperature_2m_max,temperature_2m_min,weather_code," +
-                  "precipitation_probability_max,precipitation_sum,wind_speed_10m_max" +
-                  "&temperature_unit=fahrenheit&wind_speed_unit=kmh" +
-                  "&timezone=America%2FNew_York&forecast_days=7";
+        var forecastUrl = await GetNwsForecastUrlAsync(lat, lon, ct);
+        var client = CreateNwsClient();
+        var json = await client.GetStringAsync(forecastUrl, ct);
+        var resp = JsonSerializer.Deserialize<NwsForecastResponse>(json, JsonOptions);
 
-        var json = await client.GetStringAsync(url, ct);
-        var resp = JsonSerializer.Deserialize<OpenMeteoForecastResponse>(json, JsonOptions);
-
-        if (resp?.Daily is null || resp.Daily.Time.Count == 0)
+        var periods = resp?.Properties?.Periods;
+        if (periods is null || periods.Count == 0)
             return [];
 
-        var d = resp.Daily;
+        // NWS returns 14 periods: alternating day/night for 7 days.
+        // Pair them to extract daily high/low.
         var results = new List<DailyForecast>();
-        for (var i = 0; i < d.Time.Count; i++)
+        var i = 0;
+
+        while (i < periods.Count && results.Count < 7)
         {
-            var code = i < d.Weather_code.Count ? d.Weather_code[i] : 0;
+            var period = periods[i];
+            var date = DateOnly.Parse(period.StartTime[..10]).ToString("yyyy-MM-dd");
+
+            int high, low;
+            string condition;
+            int precipPct;
+            string windSpeed;
+
+            if (period.IsDaytime)
+            {
+                high = period.Temperature;
+                condition = period.ShortForecast;
+                precipPct = period.ProbabilityOfPrecipitation?.Value ?? 0;
+                windSpeed = period.WindSpeed;
+
+                // Next period should be the night
+                if (i + 1 < periods.Count && !periods[i + 1].IsDaytime)
+                {
+                    low = periods[i + 1].Temperature;
+                    i += 2;
+                }
+                else
+                {
+                    low = high - 15; // fallback estimate
+                    i++;
+                }
+            }
+            else
+            {
+                // Started with a night period (partial first day)
+                low = period.Temperature;
+                precipPct = period.ProbabilityOfPrecipitation?.Value ?? 0;
+                windSpeed = period.WindSpeed;
+                condition = period.ShortForecast;
+                high = low + 15; // fallback estimate
+                i++;
+            }
+
+            var weatherCode = ConditionToWeatherCode(condition);
+
             results.Add(new DailyForecast
             {
-                Date = d.Time[i],
-                TempMaxF = i < d.Temperature_2m_max.Count ? d.Temperature_2m_max[i] : 0,
-                TempMinF = i < d.Temperature_2m_min.Count ? d.Temperature_2m_min[i] : 0,
-                WeatherCode = code,
-                Condition = WmoCodeToCondition(code),
-                Icon = WmoCodeToIcon(code),
-                PrecipitationProbabilityPct = i < d.Precipitation_probability_max.Count
-                    ? d.Precipitation_probability_max[i] : 0,
-                PrecipitationMm = i < d.Precipitation_sum.Count ? d.Precipitation_sum[i] : 0,
-                WindMaxKmh = i < d.Wind_speed_10m_max.Count ? d.Wind_speed_10m_max[i] : 0,
+                Date = date,
+                TempMaxF = high,
+                TempMinF = low,
+                WeatherCode = weatherCode,
+                Condition = SimplifyCondition(condition),
+                Icon = WeatherCodeToIcon(weatherCode),
+                PrecipitationProbabilityPct = precipPct,
+                PrecipitationMm = 0, // NWS doesn't provide a simple daily mm sum
+                WindMaxKmh = ParseWindSpeedToKmh(windSpeed),
             });
         }
 
         return results;
+    }
+
+    private HttpClient CreateNwsClient()
+    {
+        var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("LawncareApp/1.0 (lawncare-7fa77.web.app)");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/geo+json");
+        return client;
     }
 
     private static WeatherForecastResponse BuildResponse(List<DailyForecast> daily)
@@ -117,38 +194,76 @@ public class ForecastService : IForecastService
         };
     }
 
-    /// <summary>Maps WMO 4677 weather code to a human-readable condition string.</summary>
-    internal static string WmoCodeToCondition(int code) => code switch
+    /// <summary>Extracts the first numeric mph value and converts to km/h.</summary>
+    internal static double ParseWindSpeedToKmh(string windSpeed)
     {
-        0 => "Clear sky",
-        1 => "Mainly clear",
-        2 => "Partly cloudy",
-        3 => "Overcast",
-        45 or 48 => "Fog",
-        51 => "Light drizzle",
-        53 => "Moderate drizzle",
-        55 => "Dense drizzle",
-        56 or 57 => "Freezing drizzle",
-        61 => "Slight rain",
-        63 => "Moderate rain",
-        65 => "Heavy rain",
-        66 or 67 => "Freezing rain",
-        71 => "Slight snow",
-        73 => "Moderate snow",
-        75 => "Heavy snow",
-        77 => "Snow grains",
-        80 => "Slight rain showers",
-        81 => "Moderate rain showers",
-        82 => "Violent rain showers",
-        85 => "Slight snow showers",
-        86 => "Heavy snow showers",
-        95 => "Thunderstorm",
-        96 or 99 => "Thunderstorm with hail",
-        _ => "Unknown",
-    };
+        // "16 mph" or "10 to 18 mph" — take the higher value
+        var parts = windSpeed.Split(' ');
+        double maxMph = 0;
+        foreach (var part in parts)
+        {
+            if (double.TryParse(part, out var mph) && mph > maxMph)
+                maxMph = mph;
+        }
+        return Math.Round(maxMph * 1.60934, 1);
+    }
 
-    /// <summary>Maps WMO 4677 weather code to a Material icon name.</summary>
-    internal static string WmoCodeToIcon(int code) => code switch
+    /// <summary>
+    /// Maps NWS shortForecast text to a simplified weather code compatible with the ESP32 display icons.
+    /// Codes loosely follow WMO 4677 groupings used by the existing icon drawing code.
+    /// </summary>
+    internal static int ConditionToWeatherCode(string condition)
+    {
+        var lower = condition.ToLowerInvariant();
+
+        if (lower.Contains("thunder"))      return 95;
+        if (lower.Contains("freezing rain") || lower.Contains("ice") || lower.Contains("sleet"))
+                                             return 66;
+        if (lower.Contains("snow") || lower.Contains("flurr") || lower.Contains("blizzard"))
+                                             return 73;
+        if (lower.Contains("heavy rain"))    return 65;
+        if (lower.Contains("rain shower"))   return 80;
+        if (lower.Contains("rain") || lower.Contains("showers"))
+                                             return 61;
+        if (lower.Contains("drizzle"))       return 51;
+        if (lower.Contains("fog") || lower.Contains("mist") || lower.Contains("haze"))
+                                             return 45;
+        if (lower.Contains("overcast"))      return 3;
+        if (lower.Contains("mostly cloudy") || lower.Contains("considerable cloud"))
+                                             return 3;
+        if (lower.Contains("partly"))        return 2;
+        if (lower.Contains("mostly sunny") || lower.Contains("mostly clear"))
+                                             return 1;
+        if (lower.Contains("sunny") || lower.Contains("clear"))
+                                             return 0;
+        if (lower.Contains("cloud"))         return 3;
+
+        return 3; // default to overcast
+    }
+
+    /// <summary>Simplify long NWS shortForecast strings for display.</summary>
+    internal static string SimplifyCondition(string condition)
+    {
+        // NWS often has "Partly Sunny then Slight Chance Showers And Thunderstorms"
+        // Take just the first clause if there's a "then"
+        var thenIdx = condition.IndexOf(" then ", StringComparison.OrdinalIgnoreCase);
+        var simplified = thenIdx > 0 ? condition[..thenIdx] : condition;
+
+        // Trim common NWS probability prefixes for cleaner display
+        simplified = simplified
+            .Replace("Slight Chance ", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("Chance ", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("Likely ", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("Areas Of ", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("Patchy ", "", StringComparison.OrdinalIgnoreCase)
+            .Trim();
+
+        // Cap length for ESP32 display (24 char limit in ForecastDay.condition)
+        return simplified.Length > 23 ? simplified[..23] : simplified;
+    }
+
+    /// <summary>Maps simplified weather code to a Material icon name.</summary>
+    internal static string WeatherCodeToIcon(int code) => code switch
     {
         0 => "wb_sunny",
         1 or 2 => "partly_cloudy_day",

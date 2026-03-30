@@ -57,6 +57,7 @@ Dockerfile               # Multi-stage build for Cloud Run
 | POST | `/api/weather/ecowitt` | Receive Ecowitt GW1100 sensor push |
 | GET | `/api/weather/current` | Latest weather reading |
 | GET | `/api/weather/display` | Condensed snapshot for ESP32 |
+| GET | `/api/weather/forecast?lat=&lon=` | 7-day forecast (NWS, cached 60 min) |
 | GET | `/api/weather/history?from=&to=&limit=` | Historical readings |
 
 ### User (auth required)

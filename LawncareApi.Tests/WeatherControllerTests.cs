@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LawncareApi.Tests;
 
-/// <summary>Stub that returns an empty forecast so controller tests don't need Open-Meteo.</summary>
+/// <summary>Stub that returns an empty forecast so controller tests don't need NWS.</summary>
 internal sealed class StubForecastService : IForecastService
 {
     public Task<WeatherForecastResponse> GetForecastAsync(
