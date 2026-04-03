@@ -32,6 +32,14 @@ public static class EcowittMapper
         .Select(v => v!.Value)
         .ToList();
 
+        var soilTemp = new List<double?> {
+            src.tf_ch1, src.tf_ch2, src.tf_ch3, src.tf_ch4,
+            src.tf_ch5, src.tf_ch6, src.tf_ch7, src.tf_ch8
+        }
+        .Where(v => v.HasValue)
+        .Select(v => FtoC(v!.Value))
+        .ToList();
+
         return new WeatherReading
         {
             Timestamp = timestamp,
@@ -51,7 +59,8 @@ public static class EcowittMapper
             UvIndex = src.uv,
             IndoorTempC = src.tempinf.HasValue ? FtoC(src.tempinf.Value) : null,
             IndoorHumidityPct = src.humidityin,
-            SoilMoisturePct = soilMoisture.Count > 0 ? soilMoisture : null
+            SoilMoisturePct = soilMoisture.Count > 0 ? soilMoisture : null,
+            SoilTempC = soilTemp.Count > 0 ? soilTemp : null
         };
     }
 }

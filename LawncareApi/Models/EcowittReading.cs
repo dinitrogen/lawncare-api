@@ -87,4 +87,14 @@ public class EcowittReading
     public int? humidity6 { get; set; }
     public int? humidity7 { get; set; }
     public int? humidity8 { get; set; }
+
+    // ── WN34 soil/water temperature sensors (°F) ────────────────────────────
+    public double? tf_ch1 { get; set; }
+    public double? tf_ch2 { get; set; }
+    public double? tf_ch3 { get; set; }
+    public double? tf_ch4 { get; set; }
+    public double? tf_ch5 { get; set; }
+    public double? tf_ch6 { get; set; }
+    public double? tf_ch7 { get; set; }
+    public double? tf_ch8 { get; set; }
 }

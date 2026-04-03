@@ -15,7 +15,7 @@ Build a compact weather station display using an **Arduino Nano ESP32** and a **
 7. [API Integration](#api-integration)
 8. [Complete Firmware](#complete-firmware)
 9. [Build & Upload](#build--upload)
-10. [Power & Enclosure Tips](#power--enclosure-tips)
+10. [Enclosure & PCB](#enclosure--pcb)
 
 ---
 
@@ -851,3 +851,28 @@ PlatformIO's esptool can only flash in bootloader mode. To enter bootloader:
 2. Or double-tap the physical reset button
 
 The CDC port cannot be opened by pyserial's standard methods on Windows (you get `OSError(22)`). The `flash_rescue.py` script uses the Win32 `CreateFileW` API directly to work around this.
+
+---
+
+## Enclosure & PCB
+
+A 3D-printable enclosure and carrier PCB schematic are available in the [`hardware/`](../../lawncare-display/hardware/) directory of the `lawncare-display` project.
+
+### What's Included
+
+| File | Description |
+|------|-------------|
+| `hardware/enclosure/enclosure.scad` | Parametric OpenSCAD enclosure (two-part: front shell + back cover) |
+| `hardware/pcb/lawncare-display.kicad_sch` | KiCad 8 schematic with full wiring diagram |
+| `hardware/pcb/lawncare-display.kicad_pro` | KiCad project file |
+| `hardware/README.md` | BOM, assembly instructions, and dimension reference |
+
+### Quick Start
+
+1. **Print the enclosure:** Open `enclosure.scad` in [OpenSCAD](https://openscad.org/), export front and back as STL, slice and print (PLA, 0.2mm, no supports)
+2. **Wire the circuit:** Follow the connection table in `hardware/README.md` — either with jumper wires or a fabricated carrier PCB
+3. **Assemble:** Mount TFT in front shell → connect Nano ESP32 → attach back cover
+
+The enclosure is fully parametric — adjust `tft_pcb_w`, `tft_pcb_l`, `wall`, `clearance`, etc. at the top of the `.scad` file if your TFT module dimensions differ from the HiLetgo 2.8".
+
+See [`hardware/README.md`](../../lawncare-display/hardware/README.md) for the full bill of materials and step-by-step assembly guide.

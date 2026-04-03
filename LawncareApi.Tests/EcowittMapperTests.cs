@@ -98,6 +98,25 @@ public class EcowittMapperTests
     }
 
     [Fact]
+    public void ToWeatherReading_MapsSoilTempC_WhenChannelsPresent()
+    {
+        var src = new EcowittReading { tf_ch1 = 68.0, tf_ch2 = 59.0 };
+        var result = EcowittMapper.ToWeatherReading(src);
+        Assert.NotNull(result.SoilTempC);
+        Assert.Equal(2, result.SoilTempC!.Count);
+        Assert.Equal(20.0, result.SoilTempC[0]);
+        Assert.Equal(15.0, result.SoilTempC[1]);
+    }
+
+    [Fact]
+    public void ToWeatherReading_SoilTempC_IsNull_WhenNoChannelsPresent()
+    {
+        var src = new EcowittReading { tempf = 70.0 };
+        var result = EcowittMapper.ToWeatherReading(src);
+        Assert.Null(result.SoilTempC);
+    }
+
+    [Fact]
     public void ToWeatherReading_NullFields_ResultInNullProperties()
     {
         var src = new EcowittReading();

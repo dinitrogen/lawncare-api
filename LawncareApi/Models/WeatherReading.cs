@@ -71,6 +71,10 @@ public class WeatherReading
     [FirestoreProperty]
     public IList<int>? SoilMoisturePct { get; set; }
 
+    // ── WN34 soil temperature channels (°C) ─────────────────────────────────
+    [FirestoreProperty]
+    public IList<double>? SoilTempC { get; set; }
+
     // ── Source device info ──────────────────────────────────────────────────
     [FirestoreProperty]
     public string? StationType { get; set; }
