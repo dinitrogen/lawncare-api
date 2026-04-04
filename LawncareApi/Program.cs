@@ -86,6 +86,7 @@ builder.Services.AddScoped<ISoilTestService, SoilTestService>();
 builder.Services.AddScoped<IGddApiService, GddApiService>();
 builder.Services.AddScoped<IForecastService, ForecastService>();
 builder.Services.AddScoped<ISeasonalService, SeasonalService>();
+builder.Services.AddScoped<IReminderService, ReminderService>();
 builder.Services.AddScoped<DiscordNotificationService>();
 
 var app = builder.Build();

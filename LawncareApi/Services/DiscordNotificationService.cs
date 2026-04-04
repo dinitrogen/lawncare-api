@@ -68,6 +68,30 @@ public class DiscordNotificationService
         await SendWebhookAsync(webhookUrl, payload);
     }
 
+    public async Task SendReminderNotificationAsync(string webhookUrl, string title, string date, string? time)
+    {
+        var dateDisplay = time is not null ? $"{date} at {time}" : date;
+        var payload = new
+        {
+            content = "",
+            embeds = new[]
+            {
+                new
+                {
+                    title = "🔔 Reminder",
+                    description = $"**{title}**",
+                    color = 0x1565c0,
+                    fields = new[]
+                    {
+                        new { name = "Date", value = dateDisplay, inline = true },
+                    }
+                }
+            }
+        };
+
+        await SendWebhookAsync(webhookUrl, payload);
+    }
+
     private static bool IsValidDiscordWebhookUrl(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
         uri.Scheme == "https" &&
