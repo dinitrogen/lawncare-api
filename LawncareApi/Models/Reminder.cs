@@ -23,6 +23,13 @@ public class Reminder
     [FirestoreProperty]
     public bool SendDiscordReminder { get; set; }
 
+    /// <summary>
+    /// Set to <c>true</c> once the Discord notification for this reminder has been dispatched.
+    /// The <see cref="ReminderNotificationWorker"/> uses this flag to avoid re-sending.
+    /// </summary>
+    [FirestoreProperty]
+    public bool NotificationSent { get; set; }
+
     [FirestoreProperty]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

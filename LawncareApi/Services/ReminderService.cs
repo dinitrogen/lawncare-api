@@ -69,6 +69,8 @@ public class ReminderService : IReminderService
         reminder.Time = request.Time;
         reminder.Notes = request.Notes;
         reminder.SendDiscordReminder = request.SendDiscordReminder;
+        // Reset so the scheduler re-evaluates delivery on the new date/time.
+        reminder.NotificationSent = false;
 
         await docRef.SetAsync(reminder, cancellationToken: ct);
         return reminder;

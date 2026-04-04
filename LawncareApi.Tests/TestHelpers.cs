@@ -129,6 +129,7 @@ internal sealed class InMemoryReminderService : IReminderService
             Time = request.Time,
             Notes = request.Notes,
             SendDiscordReminder = request.SendDiscordReminder,
+            NotificationSent = false,
             CreatedAt = DateTime.UtcNow,
         };
         _store[reminder.Id!] = reminder;
@@ -144,12 +145,24 @@ internal sealed class InMemoryReminderService : IReminderService
         reminder.Time = request.Time;
         reminder.Notes = request.Notes;
         reminder.SendDiscordReminder = request.SendDiscordReminder;
+        // Reset so the scheduler re-evaluates delivery on the new date/time.
+        reminder.NotificationSent = false;
 
         return Task.FromResult<Reminder?>(reminder);
     }
 
     public async Task<bool> DeleteAsync(string uid, string id, CancellationToken ct = default) =>
         await Task.FromResult(_store.Remove(id));
+
+    /// <summary>
+    /// Test helper: simulates the background worker having already dispatched
+    /// the notification for <paramref name="id"/>.
+    /// </summary>
+    public void MarkNotificationSentForTest(string id)
+    {
+        if (_store.TryGetValue(id, out var reminder))
+            reminder.NotificationSent = true;
+    }
 }
 
 /// <summary>
