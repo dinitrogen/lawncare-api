@@ -88,6 +88,7 @@ builder.Services.AddScoped<IForecastService, ForecastService>();
 builder.Services.AddScoped<ISeasonalService, SeasonalService>();
 builder.Services.AddScoped<IReminderService, ReminderService>();
 builder.Services.AddScoped<DiscordNotificationService>();
+builder.Services.AddHostedService<ReminderNotificationWorker>();
 
 var app = builder.Build();
 

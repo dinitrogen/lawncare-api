@@ -7,9 +7,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace LawncareApi.Controllers;
 
 /// <summary>
-/// CRUD for calendar reminders. Sends a Discord notification on creation
-/// if <see cref="ReminderRequest.SendDiscordReminder"/> is true and the user
-/// has a webhook configured.
+/// CRUD for calendar reminders. Discord notifications are scheduled by
+/// <see cref="ReminderNotificationWorker"/> and sent on the reminder's date/time,
+/// not at creation.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -17,19 +17,13 @@ namespace LawncareApi.Controllers;
 public class RemindersController : ControllerBase
 {
     private readonly IReminderService _service;
-    private readonly IUserService _userService;
-    private readonly DiscordNotificationService _discord;
     private readonly ILogger<RemindersController> _logger;
 
     public RemindersController(
         IReminderService service,
-        IUserService userService,
-        DiscordNotificationService discord,
         ILogger<RemindersController> logger)
     {
         _service = service;
-        _userService = userService;
-        _discord = discord;
         _logger = logger;
     }
 
@@ -67,27 +61,6 @@ public class RemindersController : ControllerBase
 
         var uid = User.GetFirebaseUid();
         var reminder = await _service.CreateAsync(uid, request, ct);
-
-        // Send Discord notification (best-effort, non-blocking)
-        if (reminder.SendDiscordReminder)
-        {
-            try
-            {
-                var user = await _userService.GetAsync(uid);
-                if (user?.DiscordWebhookUrl is not null)
-                {
-                    await _discord.SendReminderNotificationAsync(
-                        user.DiscordWebhookUrl,
-                        reminder.Title,
-                        reminder.Date,
-                        reminder.Time);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Discord notification failed for reminder {Id}", reminder.Id);
-            }
-        }
 
         return CreatedAtAction(nameof(GetById), new { id = reminder.Id }, reminder);
     }

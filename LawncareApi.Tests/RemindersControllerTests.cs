@@ -14,14 +14,8 @@ public class RemindersControllerTests
 
     private static RemindersController CreateController(InMemoryReminderService? svc = null)
     {
-        var discord = new DiscordNotificationService(
-            new StubHttpClientFactory(),
-            NullLogger<DiscordNotificationService>.Instance);
-
         var controller = new RemindersController(
             svc ?? new InMemoryReminderService(),
-            new StubUserService(),
-            discord,
             NullLogger<RemindersController>.Instance);
 
         controller.ControllerContext = new ControllerContext
@@ -94,6 +88,66 @@ public class RemindersControllerTests
         Assert.Equal("2025-03-15", reminder.Date);
         Assert.Equal("08:00", reminder.Time);
         Assert.NotNull(reminder.Id);
+    }
+
+    /// <summary>
+    /// Notifications must NOT be dispatched at creation time; the background worker
+    /// sends them on the reminder's scheduled date/time.
+    /// </summary>
+    [Fact]
+    public async Task Create_SetsNotificationSent_False_OnCreation()
+    {
+        var svc = new InMemoryReminderService();
+        var controller = CreateController(svc);
+
+        var request = new ReminderRequest
+        {
+            Title = "Overseed",
+            Date = "2025-09-15",
+            SendDiscordReminder = true,
+        };
+
+        var result = await controller.Create(request, CancellationToken.None);
+        var created = Assert.IsType<CreatedAtActionResult>(result);
+        var reminder = Assert.IsType<Reminder>(created.Value);
+
+        Assert.False(reminder.NotificationSent,
+            "NotificationSent must be false at creation; the worker will set it to true on the event date.");
+    }
+
+    /// <summary>
+    /// Updating a reminder resets <see cref="Reminder.NotificationSent"/> so the
+    /// background worker re-evaluates it on the new date/time.
+    /// </summary>
+    [Fact]
+    public async Task Update_ResetsNotificationSent_ToFalse()
+    {
+        var svc = new InMemoryReminderService();
+        var controller = CreateController(svc);
+
+        var created = await svc.CreateAsync(TestUid, new ReminderRequest
+        {
+            Title = "Fertilize",
+            Date = "2025-05-01",
+            SendDiscordReminder = true,
+        });
+
+        // Simulate the worker marking the notification as sent.
+        svc.MarkNotificationSentForTest(created.Id!);
+
+        var updateRequest = new ReminderRequest
+        {
+            Title = "Fertilize (rescheduled)",
+            Date = "2025-05-15",
+            SendDiscordReminder = true,
+        };
+
+        var result = await controller.Update(created.Id!, updateRequest, CancellationToken.None);
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var updated = Assert.IsType<Reminder>(ok.Value);
+
+        Assert.False(updated.NotificationSent,
+            "Updating a reminder must reset NotificationSent so the worker fires again on the new date.");
     }
 
     [Fact]
