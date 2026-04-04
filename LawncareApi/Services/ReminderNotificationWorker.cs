@@ -30,6 +30,9 @@ public class ReminderNotificationWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Brief startup delay so the host finishes initializing before the first poll.
+        await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken).ConfigureAwait(false);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             await SendDueNotificationsAsync(stoppingToken);
@@ -81,20 +84,37 @@ public class ReminderNotificationWorker : BackgroundService
 
                 try
                 {
+                    // Atomically claim the reminder so concurrent instances don't double-send.
+                    var claimed = false;
+                    Reminder? claimedReminder = null;
+                    await db.RunTransactionAsync(async transaction =>
+                    {
+                        var fresh = await transaction.GetSnapshotAsync(doc.Reference);
+                        if (!fresh.Exists) return;
+                        var current = fresh.ConvertTo<Reminder>();
+                        if (current.NotificationSent)
+                        {
+                            claimed = false;
+                            return;
+                        }
+                        current.NotificationSent = true;
+                        transaction.Set(doc.Reference, current);
+                        claimed = true;
+                        claimedReminder = current;
+                    }, cancellationToken: ct);
+
+                    if (!claimed || claimedReminder is null)
+                        continue;
+
                     var user = await userService.GetAsync(uid, ct);
                     if (user?.DiscordWebhookUrl is not null)
                     {
                         await discord.SendReminderNotificationAsync(
                             user.DiscordWebhookUrl,
-                            reminder.Title,
-                            reminder.Date,
-                            reminder.Time);
+                            claimedReminder.Title,
+                            claimedReminder.Date,
+                            claimedReminder.Time);
                     }
-
-                    // Mark as sent regardless of whether a webhook was configured,
-                    // so the reminder is not reprocessed on the next poll.
-                    reminder.NotificationSent = true;
-                    await doc.Reference.SetAsync(reminder, cancellationToken: ct);
                 }
                 catch (Exception ex)
                 {

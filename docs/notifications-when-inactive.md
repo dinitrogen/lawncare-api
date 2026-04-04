@@ -21,13 +21,22 @@ request wakes the instance and the worker runs again.
 
 ### Option 1 – Cloud Scheduler pings the API (recommended for quick adoption)
 
-Create a Cloud Scheduler job that sends a lightweight HTTP `GET` to the API every 5–15 minutes:
+Create a dedicated, unauthenticated health/ping endpoint (e.g. `GET /health`) and configure
+a Cloud Scheduler job to call it every 5–15 minutes:
 
 ```
-GET https://<api-host>/api/health   (or any authenticated endpoint)
+GET https://<api-host>/health
 ```
 
-This keeps the Cloud Run instance warm, so the `ReminderNotificationWorker` never stops.
+A simple `/health` endpoint that returns `200 OK` without requiring a Firebase JWT lets Cloud
+Scheduler keep the instance warm without needing credentials.  An authenticated endpoint is
+not suitable here because Cloud Scheduler would need service-account tokens scoped to the API.
+
+**To add the endpoint:**
+
+```csharp
+app.MapGet("/health", () => Results.Ok()).AllowAnonymous();
+```
 
 **Pros:** Zero new infrastructure; easy to enable today.  
 **Cons:** Costs a small amount to keep the instance warm 24/7; doesn't scale well if the
