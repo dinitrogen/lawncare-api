@@ -59,6 +59,12 @@ public class RemindersController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Title))
             return BadRequest("Title is required.");
 
+        if (string.IsNullOrWhiteSpace(request.Date))
+            return BadRequest("Date is required.");
+
+        if (!DateOnly.TryParseExact(request.Date, "yyyy-MM-dd", out _))
+            return BadRequest("Date must be a valid date in yyyy-MM-dd format.");
+
         var uid = User.GetFirebaseUid();
         var reminder = await _service.CreateAsync(uid, request, ct);
 

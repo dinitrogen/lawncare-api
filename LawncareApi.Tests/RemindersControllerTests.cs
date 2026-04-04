@@ -56,6 +56,24 @@ public class RemindersControllerTests
     }
 
     [Fact]
+    public async Task Create_ReturnsBadRequest_WhenDateIsEmpty()
+    {
+        var controller = CreateController();
+        var request = new ReminderRequest { Title = "Fertilize", Date = "" };
+        var result = await controller.Create(request, CancellationToken.None);
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task Create_ReturnsBadRequest_WhenDateIsInvalidFormat()
+    {
+        var controller = CreateController();
+        var request = new ReminderRequest { Title = "Fertilize", Date = "not-a-date" };
+        var result = await controller.Create(request, CancellationToken.None);
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
     public async Task Create_ReturnsCreated_WithPopulatedReminder()
     {
         var controller = CreateController();
