@@ -98,3 +98,79 @@ internal sealed class InMemoryLawnCareTaskService : ILawnCareTaskService
     public async Task<bool> DeleteAsync(string id, CancellationToken ct = default) =>
         await Task.FromResult(_store.Remove(id));
 }
+
+/// <summary>
+/// In-memory implementation of <see cref="IReminderService"/> for unit tests.
+/// </summary>
+internal sealed class InMemoryReminderService : IReminderService
+{
+    private readonly Dictionary<string, Reminder> _store = [];
+
+    public Task<IReadOnlyList<Reminder>> GetAllAsync(string uid, CancellationToken ct = default)
+    {
+        IReadOnlyList<Reminder> result = _store.Values
+            .OrderByDescending(r => r.Date)
+            .ToList()
+            .AsReadOnly();
+
+        return Task.FromResult(result);
+    }
+
+    public Task<Reminder?> GetByIdAsync(string uid, string id, CancellationToken ct = default) =>
+        Task.FromResult(_store.TryGetValue(id, out var r) ? r : null);
+
+    public Task<Reminder> CreateAsync(string uid, ReminderRequest request, CancellationToken ct = default)
+    {
+        var reminder = new Reminder
+        {
+            Id = Guid.NewGuid().ToString(),
+            Title = request.Title,
+            Date = request.Date,
+            Time = request.Time,
+            Notes = request.Notes,
+            SendDiscordReminder = request.SendDiscordReminder,
+            CreatedAt = DateTime.UtcNow,
+        };
+        _store[reminder.Id!] = reminder;
+        return Task.FromResult(reminder);
+    }
+
+    public Task<Reminder?> UpdateAsync(string uid, string id, ReminderRequest request, CancellationToken ct = default)
+    {
+        if (!_store.TryGetValue(id, out var reminder)) return Task.FromResult<Reminder?>(null);
+
+        reminder.Title = request.Title;
+        reminder.Date = request.Date;
+        reminder.Time = request.Time;
+        reminder.Notes = request.Notes;
+        reminder.SendDiscordReminder = request.SendDiscordReminder;
+
+        return Task.FromResult<Reminder?>(reminder);
+    }
+
+    public async Task<bool> DeleteAsync(string uid, string id, CancellationToken ct = default) =>
+        await Task.FromResult(_store.Remove(id));
+}
+
+/// <summary>
+/// Stub <see cref="IUserService"/> that always returns null (no user profile) for unit tests.
+/// </summary>
+internal sealed class StubUserService : IUserService
+{
+    public Task<AppUser?> GetAsync(string uid, CancellationToken ct = default) =>
+        Task.FromResult<AppUser?>(null);
+
+    public Task<AppUser> CreateAsync(string uid, AppUserCreateRequest request, CancellationToken ct = default) =>
+        throw new NotImplementedException();
+
+    public Task<AppUser?> UpdateAsync(string uid, AppUserUpdateRequest request, CancellationToken ct = default) =>
+        throw new NotImplementedException();
+}
+
+/// <summary>
+/// Stub <see cref="IHttpClientFactory"/> that returns a default <see cref="HttpClient"/> for unit tests.
+/// </summary>
+internal sealed class StubHttpClientFactory : IHttpClientFactory
+{
+    public HttpClient CreateClient(string name) => new();
+}
