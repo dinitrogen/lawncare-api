@@ -43,8 +43,8 @@ public class TreatmentService : ITreatmentService
     {
         var treatment = new Treatment
         {
-            ZoneId = request.ZoneId,
-            ZoneName = request.ZoneName,
+            ZoneIds = request.ZoneIds,
+            ZoneNames = request.ZoneNames,
             ProductId = request.ProductId,
             ProductName = request.ProductName,
             ApplicationDate = request.ApplicationDate,
@@ -54,6 +54,7 @@ public class TreatmentService : ITreatmentService
             WeatherConditions = request.WeatherConditions,
             Temperature = request.Temperature,
             Notes = request.Notes,
+            Gdd = request.Gdd,
             PhotoIds = request.PhotoIds,
             CreatedAt = DateTime.UtcNow,
         };
@@ -71,8 +72,8 @@ public class TreatmentService : ITreatmentService
         if (!snapshot.Exists) return null;
 
         var treatment = snapshot.ConvertTo<Treatment>();
-        treatment.ZoneId = request.ZoneId;
-        treatment.ZoneName = request.ZoneName;
+        treatment.ZoneIds = request.ZoneIds;
+        treatment.ZoneNames = request.ZoneNames;
         treatment.ProductId = request.ProductId;
         treatment.ProductName = request.ProductName;
         treatment.ApplicationDate = request.ApplicationDate;
@@ -82,6 +83,7 @@ public class TreatmentService : ITreatmentService
         treatment.WeatherConditions = request.WeatherConditions;
         treatment.Temperature = request.Temperature;
         treatment.Notes = request.Notes;
+        treatment.Gdd = request.Gdd;
         treatment.PhotoIds = request.PhotoIds;
 
         await docRef.SetAsync(treatment, cancellationToken: ct);

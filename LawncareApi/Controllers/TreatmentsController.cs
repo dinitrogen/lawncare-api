@@ -67,7 +67,7 @@ public class TreatmentsController : ControllerBase
                 await _discord.SendTreatmentNotificationAsync(
                     user.DiscordWebhookUrl,
                     treatment.ProductName,
-                    treatment.ZoneName,
+                    string.Join(", ", treatment.ZoneNames ?? []),
                     treatment.AmountApplied,
                     treatment.ApplicationDate.ToString("yyyy-MM-dd"));
             }

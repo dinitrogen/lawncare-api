@@ -187,3 +187,72 @@ internal sealed class StubHttpClientFactory : IHttpClientFactory
 {
     public HttpClient CreateClient(string name) => new();
 }
+
+/// <summary>
+/// In-memory implementation of <see cref="ITreatmentService"/> for unit tests.
+/// </summary>
+internal sealed class InMemoryTreatmentService : ITreatmentService
+{
+    private readonly Dictionary<string, Treatment> _store = [];
+
+    public Task<IReadOnlyList<Treatment>> GetAllAsync(string uid, CancellationToken ct = default)
+    {
+        IReadOnlyList<Treatment> result = _store.Values
+            .OrderByDescending(t => t.ApplicationDate)
+            .ToList()
+            .AsReadOnly();
+
+        return Task.FromResult(result);
+    }
+
+    public Task<Treatment?> GetByIdAsync(string uid, string id, CancellationToken ct = default) =>
+        Task.FromResult(_store.TryGetValue(id, out var t) ? t : null);
+
+    public Task<Treatment> CreateAsync(string uid, TreatmentRequest request, CancellationToken ct = default)
+    {
+        var treatment = new Treatment
+        {
+            Id = Guid.NewGuid().ToString(),
+            ZoneIds = request.ZoneIds,
+            ZoneNames = request.ZoneNames,
+            ProductId = request.ProductId,
+            ProductName = request.ProductName,
+            ApplicationDate = request.ApplicationDate,
+            AmountApplied = request.AmountApplied,
+            AmountUnit = request.AmountUnit,
+            WaterVolume = request.WaterVolume,
+            WeatherConditions = request.WeatherConditions,
+            Temperature = request.Temperature,
+            Notes = request.Notes,
+            Gdd = request.Gdd,
+            PhotoIds = request.PhotoIds,
+            CreatedAt = DateTime.UtcNow,
+        };
+        _store[treatment.Id!] = treatment;
+        return Task.FromResult(treatment);
+    }
+
+    public Task<Treatment?> UpdateAsync(string uid, string id, TreatmentRequest request, CancellationToken ct = default)
+    {
+        if (!_store.TryGetValue(id, out var treatment)) return Task.FromResult<Treatment?>(null);
+
+        treatment.ZoneIds = request.ZoneIds;
+        treatment.ZoneNames = request.ZoneNames;
+        treatment.ProductId = request.ProductId;
+        treatment.ProductName = request.ProductName;
+        treatment.ApplicationDate = request.ApplicationDate;
+        treatment.AmountApplied = request.AmountApplied;
+        treatment.AmountUnit = request.AmountUnit;
+        treatment.WaterVolume = request.WaterVolume;
+        treatment.WeatherConditions = request.WeatherConditions;
+        treatment.Temperature = request.Temperature;
+        treatment.Notes = request.Notes;
+        treatment.Gdd = request.Gdd;
+        treatment.PhotoIds = request.PhotoIds;
+
+        return Task.FromResult<Treatment?>(treatment);
+    }
+
+    public async Task<bool> DeleteAsync(string uid, string id, CancellationToken ct = default) =>
+        await Task.FromResult(_store.Remove(id));
+}
