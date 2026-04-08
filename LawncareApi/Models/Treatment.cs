@@ -9,10 +9,10 @@ public class Treatment
     public string? Id { get; set; }
 
     [FirestoreProperty]
-    public string ZoneId { get; set; } = string.Empty;
+    public IList<string> ZoneIds { get; set; } = [];
 
     [FirestoreProperty]
-    public string ZoneName { get; set; } = string.Empty;
+    public IList<string> ZoneNames { get; set; } = [];
 
     [FirestoreProperty]
     public string ProductId { get; set; } = string.Empty;
@@ -40,6 +40,9 @@ public class Treatment
 
     [FirestoreProperty]
     public string? Notes { get; set; }
+
+    [FirestoreProperty]
+    public double? Gdd { get; set; }
 
     [FirestoreProperty]
     public IList<string>? PhotoIds { get; set; }
@@ -50,8 +53,8 @@ public class Treatment
 
 public class TreatmentRequest
 {
-    public string ZoneId { get; set; } = string.Empty;
-    public string ZoneName { get; set; } = string.Empty;
+    public IList<string> ZoneIds { get; set; } = [];
+    public IList<string> ZoneNames { get; set; } = [];
     public string ProductId { get; set; } = string.Empty;
     public string ProductName { get; set; } = string.Empty;
     public DateTime ApplicationDate { get; set; }
@@ -61,5 +64,6 @@ public class TreatmentRequest
     public string? WeatherConditions { get; set; }
     public double? Temperature { get; set; }
     public string? Notes { get; set; }
+    public double? Gdd { get; set; }
     public IList<string>? PhotoIds { get; set; }
 }
