@@ -7,8 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace LawncareApi.Controllers;
 
 /// <summary>
-/// CRUD for lawn care treatments. Sends Discord notification on creation
-/// if the user has a webhook configured.
+/// CRUD for lawn care treatments.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -16,19 +15,13 @@ namespace LawncareApi.Controllers;
 public class TreatmentsController : ControllerBase
 {
     private readonly ITreatmentService _service;
-    private readonly IUserService _userService;
-    private readonly DiscordNotificationService _discord;
     private readonly ILogger<TreatmentsController> _logger;
 
     public TreatmentsController(
         ITreatmentService service,
-        IUserService userService,
-        DiscordNotificationService discord,
         ILogger<TreatmentsController> logger)
     {
         _service = service;
-        _userService = userService;
-        _discord = discord;
         _logger = logger;
     }
 
@@ -56,26 +49,6 @@ public class TreatmentsController : ControllerBase
     {
         var uid = User.GetFirebaseUid();
         var treatment = await _service.CreateAsync(uid, request, ct);
-
-        // Send Discord notification (best-effort, non-blocking)
-        try
-        {
-            var user = await _userService.GetAsync(uid);
-            if (user?.DiscordWebhookUrl is not null &&
-                user.NotificationPrefs.TreatmentReminders)
-            {
-                await _discord.SendTreatmentNotificationAsync(
-                    user.DiscordWebhookUrl,
-                    treatment.ProductName,
-                    string.Join(", ", treatment.ZoneNames ?? []),
-                    treatment.AmountApplied,
-                    treatment.ApplicationDate.ToString("yyyy-MM-dd"));
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Discord notification failed for treatment {Id}", treatment.Id);
-        }
 
         return CreatedAtAction(nameof(GetById), new { id = treatment.Id }, treatment);
     }
