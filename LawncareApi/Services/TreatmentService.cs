@@ -53,6 +53,7 @@ public class TreatmentService : ITreatmentService
             WaterVolume = request.WaterVolume,
             ApplicationType = request.ApplicationType,
             ApplicationRate = request.ApplicationRate,
+            ProductConcentration = request.ProductConcentration,
             SpreaderSetting = request.SpreaderSetting,
             WeatherConditions = request.WeatherConditions,
             Temperature = request.Temperature,
@@ -85,6 +86,7 @@ public class TreatmentService : ITreatmentService
         treatment.WaterVolume = request.WaterVolume;
         treatment.ApplicationType = request.ApplicationType;
         treatment.ApplicationRate = request.ApplicationRate;
+        treatment.ProductConcentration = request.ProductConcentration;
         treatment.SpreaderSetting = request.SpreaderSetting;
         treatment.WeatherConditions = request.WeatherConditions;
         treatment.Temperature = request.Temperature;

@@ -39,6 +39,9 @@ public class Treatment
     public string? ApplicationRate { get; set; }
 
     [FirestoreProperty]
+    public string? ProductConcentration { get; set; }
+
+    [FirestoreProperty]
     public double? SpreaderSetting { get; set; }
 
     [FirestoreProperty]
@@ -72,6 +75,7 @@ public class TreatmentRequest
     public double? WaterVolume { get; set; }
     public string? ApplicationType { get; set; }
     public string? ApplicationRate { get; set; }
+    public string? ProductConcentration { get; set; }
     public double? SpreaderSetting { get; set; }
     public string? WeatherConditions { get; set; }
     public double? Temperature { get; set; }
