@@ -14,4 +14,8 @@ public interface IWeatherService
     /// <summary>Return readings stored between <paramref name="from"/> and <paramref name="to"/> (UTC), newest first.</summary>
     Task<IReadOnlyList<WeatherReading>> GetHistoryAsync(
         DateTime from, DateTime to, int limit = 100, CancellationToken ct = default);
+
+    /// <summary>Return daily-aggregated summaries for the given date range.</summary>
+    Task<IReadOnlyList<DailySummaryDto>> GetDailySummariesAsync(
+        DateTime from, DateTime to, CancellationToken ct = default);
 }

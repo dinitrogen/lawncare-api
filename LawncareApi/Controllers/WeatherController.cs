@@ -108,10 +108,28 @@ public class WeatherController : ControllerBase
     {
         var end = to ?? DateTime.UtcNow;
         var start = from ?? end.AddHours(-24);
-        var capped = Math.Min(limit, 500);
+        var capped = Math.Min(limit, 50000);
 
         var readings = await _weatherService.GetHistoryAsync(start, end, capped, ct);
         return Ok(readings);
+    }
+
+    /// <summary>
+    /// Returns daily-aggregated weather summaries (high/low temp, avg humidity,
+    /// avg soil moisture/temp) for the given date range.
+    /// </summary>
+    [HttpGet("daily-summaries")]
+    [ProducesResponseType(typeof(IReadOnlyList<DailySummaryDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetDailySummaries(
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        CancellationToken ct = default)
+    {
+        var end = to ?? DateTime.UtcNow;
+        var start = from ?? end.AddDays(-30);
+
+        var summaries = await _weatherService.GetDailySummariesAsync(start, end, ct);
+        return Ok(summaries);
     }
 
     /// <summary>

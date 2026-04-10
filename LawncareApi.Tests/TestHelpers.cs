@@ -35,6 +35,30 @@ internal sealed class InMemoryWeatherService : IWeatherService
 
         return Task.FromResult(result);
     }
+
+    public Task<IReadOnlyList<DailySummaryDto>> GetDailySummariesAsync(
+        DateTime from, DateTime to, CancellationToken ct = default)
+    {
+        IReadOnlyList<DailySummaryDto> result = _readings
+            .Where(r => r.Timestamp >= from && r.Timestamp <= to)
+            .GroupBy(r => r.Timestamp.ToString("yyyy-MM-dd"))
+            .Select(g =>
+            {
+                var temps = g.Where(r => r.OutdoorTempC.HasValue).Select(r => r.OutdoorTempC!.Value).ToList();
+                return new DailySummaryDto
+                {
+                    Date = g.Key,
+                    HighTempC = temps.Count > 0 ? temps.Max() : 0,
+                    LowTempC = temps.Count > 0 ? temps.Min() : 0,
+                    AvgHumidityPct = 0,
+                };
+            })
+            .OrderBy(s => s.Date)
+            .ToList()
+            .AsReadOnly();
+
+        return Task.FromResult(result);
+    }
 }
 
 /// <summary>
