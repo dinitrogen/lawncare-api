@@ -14,14 +14,8 @@ public class TreatmentsControllerTests
 
     private static TreatmentsController CreateController(InMemoryTreatmentService? svc = null)
     {
-        var discord = new DiscordNotificationService(
-            new StubHttpClientFactory(),
-            NullLogger<DiscordNotificationService>.Instance);
-
         var controller = new TreatmentsController(
             svc ?? new InMemoryTreatmentService(),
-            new StubUserService(),
-            discord,
             NullLogger<TreatmentsController>.Instance);
 
         controller.ControllerContext = new ControllerContext
