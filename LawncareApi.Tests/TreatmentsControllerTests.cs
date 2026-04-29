@@ -48,11 +48,11 @@ public class TreatmentsControllerTests
         {
             ZoneIds = ["zone-1"],
             ZoneNames = ["Front Lawn"],
-            ProductId = "prod-1",
-            ProductName = "Fertilizer",
             ApplicationDate = new DateTime(2025, 5, 1, 0, 0, 0, DateTimeKind.Utc),
-            AmountApplied = 3.5,
-            AmountUnit = "oz",
+            LineItems =
+            [
+                new TreatmentLineItemRequest { ProductId = "prod-1", ProductName = "Fertilizer", AmountApplied = 3.5, AmountUnit = "oz" },
+            ],
         };
 
         var result = await controller.Create(request, CancellationToken.None);
@@ -64,8 +64,9 @@ public class TreatmentsControllerTests
         Assert.Equal("zone-1", treatment.ZoneIds[0]);
         Assert.Single(treatment.ZoneNames);
         Assert.Equal("Front Lawn", treatment.ZoneNames[0]);
-        Assert.Equal("Fertilizer", treatment.ProductName);
-        Assert.Equal(3.5, treatment.AmountApplied);
+        Assert.Single(treatment.LineItems);
+        Assert.Equal("Fertilizer", treatment.LineItems[0].ProductName);
+        Assert.Equal(3.5, treatment.LineItems[0].AmountApplied);
     }
 
     [Fact]
@@ -76,11 +77,11 @@ public class TreatmentsControllerTests
         {
             ZoneIds = ["zone-1", "zone-2", "zone-3"],
             ZoneNames = ["Front Lawn", "Back Lawn", "Side Yard"],
-            ProductId = "prod-1",
-            ProductName = "Pre-emergent",
             ApplicationDate = new DateTime(2025, 3, 15, 0, 0, 0, DateTimeKind.Utc),
-            AmountApplied = 10.0,
-            AmountUnit = "oz",
+            LineItems =
+            [
+                new TreatmentLineItemRequest { ProductId = "prod-1", ProductName = "Pre-emergent", AmountApplied = 10.0, AmountUnit = "oz" },
+            ],
         };
 
         var result = await controller.Create(request, CancellationToken.None);
@@ -101,11 +102,11 @@ public class TreatmentsControllerTests
         {
             ZoneIds = ["zone-1"],
             ZoneNames = ["Front Lawn"],
-            ProductId = "prod-2",
-            ProductName = "Fungicide",
             ApplicationDate = new DateTime(2025, 6, 10, 0, 0, 0, DateTimeKind.Utc),
-            AmountApplied = 2.0,
-            AmountUnit = "oz",
+            LineItems =
+            [
+                new TreatmentLineItemRequest { ProductId = "prod-2", ProductName = "Fungicide", AmountApplied = 2.0, AmountUnit = "oz" },
+            ],
             Gdd = 450.5,
         };
 
@@ -124,11 +125,11 @@ public class TreatmentsControllerTests
         {
             ZoneIds = ["zone-1"],
             ZoneNames = ["Front Lawn"],
-            ProductId = "prod-1",
-            ProductName = "Fertilizer",
             ApplicationDate = new DateTime(2025, 5, 1, 0, 0, 0, DateTimeKind.Utc),
-            AmountApplied = 3.5,
-            AmountUnit = "oz",
+            LineItems =
+            [
+                new TreatmentLineItemRequest { ProductId = "prod-1", ProductName = "Fertilizer", AmountApplied = 3.5, AmountUnit = "oz" },
+            ],
         };
 
         var result = await controller.Create(request, CancellationToken.None);
@@ -156,17 +157,17 @@ public class TreatmentsControllerTests
         {
             ZoneIds = ["zone-1"],
             ZoneNames = ["Back Lawn"],
-            ProductId = "prod-1",
-            ProductName = "Herbicide",
             ApplicationDate = new DateTime(2025, 4, 20, 0, 0, 0, DateTimeKind.Utc),
-            AmountApplied = 5.0,
-            AmountUnit = "oz",
+            LineItems =
+            [
+                new TreatmentLineItemRequest { ProductId = "prod-1", ProductName = "Herbicide", AmountApplied = 5.0, AmountUnit = "oz" },
+            ],
         });
 
         var result = await controller.GetById(created.Id!, CancellationToken.None);
         var ok = Assert.IsType<OkObjectResult>(result);
         var treatment = Assert.IsType<Treatment>(ok.Value);
-        Assert.Equal("Herbicide", treatment.ProductName);
+        Assert.Equal("Herbicide", treatment.LineItems[0].ProductName);
     }
 
     [Fact]
@@ -179,11 +180,11 @@ public class TreatmentsControllerTests
             {
                 ZoneIds = ["zone-1"],
                 ZoneNames = ["Front Lawn"],
-                ProductId = "p",
-                ProductName = "X",
                 ApplicationDate = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-                AmountApplied = 1.0,
-                AmountUnit = "oz",
+                LineItems =
+                [
+                    new TreatmentLineItemRequest { ProductId = "p", ProductName = "X", AmountApplied = 1.0, AmountUnit = "oz" },
+                ],
             },
             CancellationToken.None);
 
@@ -200,22 +201,22 @@ public class TreatmentsControllerTests
         {
             ZoneIds = ["zone-1"],
             ZoneNames = ["Front Lawn"],
-            ProductId = "prod-1",
-            ProductName = "Fertilizer",
             ApplicationDate = new DateTime(2025, 5, 1, 0, 0, 0, DateTimeKind.Utc),
-            AmountApplied = 3.5,
-            AmountUnit = "oz",
+            LineItems =
+            [
+                new TreatmentLineItemRequest { ProductId = "prod-1", ProductName = "Fertilizer", AmountApplied = 3.5, AmountUnit = "oz" },
+            ],
         });
 
         var updateRequest = new TreatmentRequest
         {
             ZoneIds = ["zone-1", "zone-2"],
             ZoneNames = ["Front Lawn", "Back Lawn"],
-            ProductId = "prod-1",
-            ProductName = "Fertilizer",
             ApplicationDate = new DateTime(2025, 5, 1, 0, 0, 0, DateTimeKind.Utc),
-            AmountApplied = 4.0,
-            AmountUnit = "oz",
+            LineItems =
+            [
+                new TreatmentLineItemRequest { ProductId = "prod-1", ProductName = "Fertilizer", AmountApplied = 4.0, AmountUnit = "oz" },
+            ],
             Gdd = 300.0,
         };
 
@@ -238,11 +239,11 @@ public class TreatmentsControllerTests
         {
             ZoneIds = ["zone-1"],
             ZoneNames = ["Side Yard"],
-            ProductId = "prod-1",
-            ProductName = "Weed killer",
             ApplicationDate = new DateTime(2025, 7, 1, 0, 0, 0, DateTimeKind.Utc),
-            AmountApplied = 2.0,
-            AmountUnit = "oz",
+            LineItems =
+            [
+                new TreatmentLineItemRequest { ProductId = "prod-1", ProductName = "Weed killer", AmountApplied = 2.0, AmountUnit = "oz" },
+            ],
         });
 
         var result = await controller.Delete(created.Id!, CancellationToken.None);
