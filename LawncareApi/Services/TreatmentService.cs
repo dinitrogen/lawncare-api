@@ -45,16 +45,19 @@ public class TreatmentService : ITreatmentService
         {
             ZoneIds = request.ZoneIds,
             ZoneNames = request.ZoneNames,
-            ProductId = request.ProductId,
-            ProductName = request.ProductName,
             ApplicationDate = request.ApplicationDate,
-            AmountApplied = request.AmountApplied,
-            AmountUnit = request.AmountUnit,
-            WaterVolume = request.WaterVolume,
             ApplicationType = request.ApplicationType,
-            ApplicationRate = request.ApplicationRate,
-            ProductConcentration = request.ProductConcentration,
+            WaterVolume = request.WaterVolume,
             SpreaderSetting = request.SpreaderSetting,
+            ApplicationRate = request.ApplicationRate,
+            LineItems = request.LineItems.Select(li => new TreatmentLineItem
+            {
+                ProductId = li.ProductId,
+                ProductName = li.ProductName,
+                AmountApplied = li.AmountApplied,
+                AmountUnit = li.AmountUnit,
+                ProductConcentration = li.ProductConcentration,
+            }).ToList(),
             WeatherConditions = request.WeatherConditions,
             Temperature = request.Temperature,
             Notes = request.Notes,
@@ -78,16 +81,19 @@ public class TreatmentService : ITreatmentService
         var treatment = snapshot.ConvertTo<Treatment>();
         treatment.ZoneIds = request.ZoneIds;
         treatment.ZoneNames = request.ZoneNames;
-        treatment.ProductId = request.ProductId;
-        treatment.ProductName = request.ProductName;
         treatment.ApplicationDate = request.ApplicationDate;
-        treatment.AmountApplied = request.AmountApplied;
-        treatment.AmountUnit = request.AmountUnit;
-        treatment.WaterVolume = request.WaterVolume;
         treatment.ApplicationType = request.ApplicationType;
-        treatment.ApplicationRate = request.ApplicationRate;
-        treatment.ProductConcentration = request.ProductConcentration;
+        treatment.WaterVolume = request.WaterVolume;
         treatment.SpreaderSetting = request.SpreaderSetting;
+        treatment.ApplicationRate = request.ApplicationRate;
+        treatment.LineItems = request.LineItems.Select(li => new TreatmentLineItem
+        {
+            ProductId = li.ProductId,
+            ProductName = li.ProductName,
+            AmountApplied = li.AmountApplied,
+            AmountUnit = li.AmountUnit,
+            ProductConcentration = li.ProductConcentration,
+        }).ToList();
         treatment.WeatherConditions = request.WeatherConditions;
         treatment.Temperature = request.Temperature;
         treatment.Notes = request.Notes;
